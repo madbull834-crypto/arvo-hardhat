@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build artifacts
+artifacts/
+cache/
+typechain-types/
+
+# Environment
+.env
+.env.local
+
+# Reports
+gas-report.txt
+coverage/
+coverage.json
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
