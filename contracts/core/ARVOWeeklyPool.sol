@@ -439,8 +439,7 @@ contract ARVOWeeklyPool is Initializable, AccessControlUpgradeable, UUPSUpgradea
             elapsed = blockTimestamp - lastOracleObservationTimestamp;
         }
         if (elapsed >= minTwapInterval) {
-            // Silently skip on failure — the staleness check below catches genuine staleness
-            try this.updateOrbdRateFromPancake() {} catch {}
+            _updateOrbdRateFromPancake();
         }
     }
 

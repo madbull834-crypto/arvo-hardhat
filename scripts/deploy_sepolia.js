@@ -4,13 +4,14 @@
  * What this script does:
  *   1. Deploys MockUSDT  (18 decimals — matches production BSC USDT)
  *   2. Deploys MockORBDToken
- *   3. Deploys ARVOWeeklyPool UUPS proxy
- *   4. Deploys ARVOMatrix UUPS proxy
- *   5. Grants MATRIX_ROLE to ARVOMatrix on ARVOWeeklyPool
- *   6. Mints test USDT to all addresses listed in TEST_MINT_ADDRESSES (or defaults)
- *   7. Saves deployment manifest → deployments/sepolia.json
- *   8. Auto-updates frontend/config.js with the new contract addresses
- *   9. Verifies all contracts on Etherscan (skipped if SKIP_VERIFY=true)
+ *   3. Deploys MockPancakeV2Pair as the Sepolia ORBD/USDT oracle pair
+ *   4. Deploys ARVOWeeklyPool UUPS proxy and configures the mock TWAP oracle
+ *   5. Deploys ARVOMatrix UUPS proxy
+ *   6. Grants MATRIX_ROLE to ARVOMatrix on ARVOWeeklyPool
+ *   7. Mints test USDT to all addresses listed in TEST_MINT_ADDRESSES (or defaults)
+ *   8. Saves deployment manifest -> deployments/sepolia.json
+ *   9. Auto-updates frontend/config.js with the new contract addresses
+ *   10. Verifies all contracts on Etherscan (skipped if SKIP_VERIFY=true)
  *
  * Required .env variables:
  *   PRIVATE_KEY          — deployer wallet key
@@ -26,6 +27,13 @@
  *   TEST_USDT_AMOUNT     — USDT amount to mint per wallet (default: 10000)
  *   POOL_WEIGHTS         — 11 comma-separated integers summing to 10000
  *   ORBD_MAX_SUPPLY      — ORBD cap in 18-dec units (default: 1 billion ORBD)
+ *   SEPOLIA_ORACLE_USDT_RESERVE — mock pair USDT reserve, human units (default: 1000)
+ *   SEPOLIA_ORACLE_ORBD_RESERVE — mock pair ORBD reserve, human units (default: 2000)
+ *   ORACLE_MIN_TWAP_INTERVAL    — min TWAP interval seconds (default: 3600)
+ *   ORACLE_MAX_AGE              — max oracle age seconds (default: 777600)
+ *   ORACLE_MAX_RATE_CHANGE_BPS  — max accepted rate movement in bps (default: 2000)
+ *   RATE_UPDATER_ADDRESS        — optional keeper wallet for oracle updates
+ *   DISTRIBUTOR_ADDRESS         — optional wallet for weekly distributions
  *   SKIP_VERIFY          — set to "true" to skip Etherscan verification
  *
  * Run:
@@ -41,6 +49,11 @@ const USDT_DECIMALS      = 18;
 const DEFAULT_WEIGHTS    = [910, 909, 909, 909, 909, 909, 909, 909, 909, 909, 909];
 const DEFAULT_MINT_AMOUNT = "10000";                       // 10,000 USDT per wallet
 const DEFAULT_MAX_SUPPLY  = ethers.parseUnits("1000000000", 18); // 1 billion ORBD
+const DEFAULT_ORACLE_USDT_RESERVE = "1000";
+const DEFAULT_ORACLE_ORBD_RESERVE = "2000";
+const DEFAULT_ORACLE_MIN_TWAP_INTERVAL = 60 * 60;
+const DEFAULT_ORACLE_MAX_AGE = 9 * 24 * 60 * 60;
+const DEFAULT_ORACLE_MAX_RATE_CHANGE_BPS = 2000;
 const DEPLOYMENTS_DIR     = path.join(__dirname, "..", "deployments");
 const MANIFEST_PATH       = path.join(DEPLOYMENTS_DIR, "sepolia.json");
 const FRONTEND_CONFIG     = path.join(__dirname, "..", "frontend", "config.js");
@@ -51,10 +64,29 @@ function requireEnv(name) {
   if (!value || !ethers.isAddress(value)) {
     throw new Error(
       `${name} must be set to a valid Ethereum address in .env\n` +
-      `  Current value: "${value || "(not set)}"`
+      `  Current value: "${value || "(not set)"}"`
     );
   }
   return ethers.getAddress(value);
+}
+
+function optionalAddress(name) {
+  const value = process.env[name];
+  if (!value) return undefined;
+  if (!ethers.isAddress(value)) {
+    throw new Error(`${name} must be a valid Ethereum address in .env`);
+  }
+  return ethers.getAddress(value);
+}
+
+function parseUintEnv(name, fallback) {
+  const value = process.env[name];
+  if (!value) return fallback;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new Error(`${name} must be a non-negative integer`);
+  }
+  return parsed;
 }
 
 function parseWeights() {
@@ -127,9 +159,36 @@ async function mintTestUsdt(usdt, recipients, deployer) {
   }
 }
 
+// ─── Deploy mock PancakeSwap pair for Sepolia oracle tests ───────────────────
+async function deployMockPancakePair(deployer, usdtAddress, orbdAddress) {
+  step("Step 4: Deploy MockPancakeV2Pair (Sepolia ORBD/USDT oracle pair)");
+  const Pair = await ethers.getContractFactory("MockPancakeV2Pair");
+  const pair = await Pair.connect(deployer).deploy(usdtAddress, orbdAddress);
+  await pair.waitForDeployment();
+  const pairAddress = await pair.getAddress();
+
+  const usdtReserve = ethers.parseUnits(
+    process.env.SEPOLIA_ORACLE_USDT_RESERVE || DEFAULT_ORACLE_USDT_RESERVE,
+    18
+  );
+  const orbdReserve = ethers.parseUnits(
+    process.env.SEPOLIA_ORACLE_ORBD_RESERVE || DEFAULT_ORACLE_ORBD_RESERVE,
+    18
+  );
+
+  const tx = await pair.connect(deployer).setReserves(usdtReserve, orbdReserve);
+  await waitConfirms(
+    tx,
+    `Mock oracle reserves set: ${ethers.formatUnits(usdtReserve, 18)} USDT / ${ethers.formatUnits(orbdReserve, 18)} ORBD`
+  );
+
+  log(`  MockPancakeV2Pair deployed: ${pairAddress}`);
+  return { pair, pairAddress, usdtReserve, orbdReserve };
+}
+
 // ─── Deploy core contracts ────────────────────────────────────────────────────
 async function deployWeeklyPool(deployer, usdtAddress, orbdAddress, weights) {
-  step("Step 4: Deploy ARVOWeeklyPool (UUPS proxy)");
+  step("Step 5: Deploy ARVOWeeklyPool (UUPS proxy)");
   const Factory = await ethers.getContractFactory("ARVOWeeklyPool");
   const proxy = await upgrades.deployProxy(
     Factory,
@@ -146,7 +205,7 @@ async function deployWeeklyPool(deployer, usdtAddress, orbdAddress, weights) {
 }
 
 async function deployMatrix(deployer, usdtAddress, poolAddress, genesis, admin1, admin2) {
-  step("Step 5: Deploy ARVOMatrix (UUPS proxy)");
+  step("Step 6: Deploy ARVOMatrix (UUPS proxy)");
   const Factory = await ethers.getContractFactory("ARVOMatrix");
   const proxy = await upgrades.deployProxy(
     Factory,
@@ -162,12 +221,43 @@ async function deployMatrix(deployer, usdtAddress, poolAddress, genesis, admin1,
   return { proxy, proxyAddress, implAddress };
 }
 
+async function configurePancakeOracle(pool, pairAddress, deployer) {
+  step("Step 7: Configure ARVOWeeklyPool TWAP oracle");
+  const minInterval = parseUintEnv("ORACLE_MIN_TWAP_INTERVAL", DEFAULT_ORACLE_MIN_TWAP_INTERVAL);
+  const maxAge = parseUintEnv("ORACLE_MAX_AGE", DEFAULT_ORACLE_MAX_AGE);
+  const maxRateChangeBps = parseUintEnv("ORACLE_MAX_RATE_CHANGE_BPS", DEFAULT_ORACLE_MAX_RATE_CHANGE_BPS);
+
+  const tx = await pool.connect(deployer).configurePancakeOracle(
+    pairAddress,
+    minInterval,
+    maxAge,
+    maxRateChangeBps
+  );
+  await waitConfirms(tx, `Pancake TWAP oracle configured with pair ${pairAddress}`);
+
+  return { minInterval, maxAge, maxRateChangeBps };
+}
+
 // ─── Grant roles ──────────────────────────────────────────────────────────────
 async function grantRoles(pool, matrixAddress, deployer) {
-  step("Step 6: Grant MATRIX_ROLE to ARVOMatrix on ARVOWeeklyPool");
+  step("Step 8: Grant operational roles on ARVOWeeklyPool");
   const role = await pool.MATRIX_ROLE();
   const tx   = await pool.connect(deployer).grantRole(role, matrixAddress);
   await waitConfirms(tx, `MATRIX_ROLE (${role.slice(0, 10)}…) granted to ${matrixAddress}`);
+
+  const rateUpdater = optionalAddress("RATE_UPDATER_ADDRESS");
+  if (rateUpdater) {
+    const updaterRole = await pool.RATE_UPDATER_ROLE();
+    const updaterTx = await pool.connect(deployer).grantRole(updaterRole, rateUpdater);
+    await waitConfirms(updaterTx, `RATE_UPDATER_ROLE (${updaterRole.slice(0, 10)}...) granted to ${rateUpdater}`);
+  }
+
+  const distributor = optionalAddress("DISTRIBUTOR_ADDRESS");
+  if (distributor) {
+    const distributorRole = await pool.DISTRIBUTOR_ROLE();
+    const distributorTx = await pool.connect(deployer).grantRole(distributorRole, distributor);
+    await waitConfirms(distributorTx, `DISTRIBUTOR_ROLE (${distributorRole.slice(0, 10)}...) granted to ${distributor}`);
+  }
 }
 
 // ─── Save manifest ────────────────────────────────────────────────────────────
@@ -179,7 +269,7 @@ function saveManifest(manifest) {
 
 // ─── Update frontend/config.js ────────────────────────────────────────────────
 function updateFrontendConfig(addresses) {
-  step("Step 7: Update frontend/config.js");
+  step("Step 9: Update frontend/config.js");
 
   const config = `/**
  * ARVO Frontend Configuration — Sepolia Testnet
@@ -207,9 +297,17 @@ window.ARVO_CONFIG = {
   contracts: {
     usdt:       "${addresses.usdt}",
     orbd:       "${addresses.orbd}",
+    oraclePair: "${addresses.oraclePair || ""}",
     weeklyPool: "${addresses.weeklyPool}",
     matrix:     "${addresses.matrix}",
     genesis:    "${addresses.genesis}"
+  },
+
+  oracle: {
+    pair: "${addresses.oraclePair || ""}",
+    minTwapInterval: ${Number(addresses.oracle?.minTwapInterval || 0)},
+    maxAge: ${Number(addresses.oracle?.maxAge || 0)},
+    maxRateChangeBps: ${Number(addresses.oracle?.maxRateChangeBps || 0)}
   }
 };
 `;
@@ -245,7 +343,7 @@ async function verifyAll(addresses) {
     return;
   }
 
-  step("Step 8: Verify contracts on Etherscan");
+  step("Step 10: Verify contracts on Etherscan");
   log("  Waiting 30 seconds for Etherscan to index the blocks…");
   await new Promise(r => setTimeout(r, 30_000));
 
@@ -259,6 +357,13 @@ async function verifyAll(addresses) {
     "MockORBDToken",
     addresses.orbd,
     "contracts/mocks/MockORBDToken.sol:MockORBDToken"
+  );
+
+  await verifyContract(
+    "MockPancakeV2Pair",
+    addresses.oraclePair,
+    "contracts/mocks/MockPancakeV2Pair.sol:MockPancakeV2Pair",
+    [addresses.usdt, addresses.orbd]
   );
 
   // UUPS proxies: verify the implementation contract, not the proxy
@@ -324,12 +429,19 @@ async function main() {
   const { usdt, usdtAddress, orbd, orbdAddress } = await deployMockTokens(deployer, genesisAddress);
   await mintTestUsdt(usdt, mintTo, deployer);
 
+  const {
+    pairAddress: oraclePairAddress,
+    usdtReserve: oracleUsdtReserve,
+    orbdReserve: oracleOrbdReserve,
+  } = await deployMockPancakePair(deployer, usdtAddress, orbdAddress);
+
   const { proxy: pool, proxyAddress: poolAddress, implAddress: poolImpl } =
     await deployWeeklyPool(deployer, usdtAddress, orbdAddress, weights);
 
   const { proxy: matrix, proxyAddress: matrixAddress, implAddress: matrixImpl } =
     await deployMatrix(deployer, usdtAddress, poolAddress, genesisAddress, skipAdmin1, skipAdmin2);
 
+  const oracleConfig = await configurePancakeOracle(pool, oraclePairAddress, deployer);
   await grantRoles(pool, matrixAddress, deployer);
 
   // ── Capture deploy block ─────────────────────────────────────────────────────
@@ -348,12 +460,22 @@ async function main() {
     contracts: {
       usdt:           usdtAddress,
       orbd:           orbdAddress,
+      oraclePair:     oraclePairAddress,
       weeklyPool:     poolAddress,
       weeklyPoolImpl: poolImpl,
       matrix:         matrixAddress,
       matrixImpl,
     },
     poolWeights: weights,
+    oracle: {
+      pair: oraclePairAddress,
+      usdtReserve: oracleUsdtReserve.toString(),
+      orbdReserve: oracleOrbdReserve.toString(),
+      minTwapInterval: oracleConfig.minInterval,
+      maxAge: oracleConfig.maxAge,
+      maxRateChangeBps: oracleConfig.maxRateChangeBps,
+      expectedInitialRate: (oracleOrbdReserve * 10n ** 18n / oracleUsdtReserve).toString(),
+    },
   };
 
   // ── Save artifacts ───────────────────────────────────────────────────────────
@@ -363,18 +485,21 @@ async function main() {
   updateFrontendConfig({
     usdt:           usdtAddress,
     orbd:           orbdAddress,
+    oraclePair:     oraclePairAddress,
     weeklyPool:     poolAddress,
     weeklyPoolImpl: poolImpl,
     matrix:         matrixAddress,
     matrixImpl,
     genesis:        genesisAddress,
     deployBlock,
+    oracle:         oracleConfig,
   });
 
   // ── Verify ───────────────────────────────────────────────────────────────────
   await verifyAll({
     usdt:           usdtAddress,
     orbd:           orbdAddress,
+    oraclePair:     oraclePairAddress,
     weeklyPool:     poolAddress,
     weeklyPoolImpl: poolImpl,
     matrix:         matrixAddress,
@@ -387,6 +512,7 @@ async function main() {
   log(`${"═".repeat(60)}`);
   log(`  MockUSDT (18 dec):     ${usdtAddress}`);
   log(`  MockORBDToken:         ${orbdAddress}`);
+  log(`  Mock ORBD/USDT pair:   ${oraclePairAddress}`);
   log(`  ARVOWeeklyPool proxy:  ${poolAddress}`);
   log(`  ARVOMatrix proxy:      ${matrixAddress}`);
   log(`  Genesis:               ${genesisAddress}`);
@@ -398,9 +524,13 @@ async function main() {
   log(`\n  Copy these into your .env (update existing values):`);
   log(`  USDT_ADDRESS=${usdtAddress}`);
   log(`  ORBD_TOKEN_ADDRESS=${orbdAddress}`);
+  log(`  ORBD_USDT_PAIR_ADDRESS=${oraclePairAddress}`);
   log(`  ARVO_WEEKLY_POOL_ADDRESS=${poolAddress}`);
   log(`  ARVO_MATRIX_ADDRESS=${matrixAddress}`);
   log(`  EVENT_START_BLOCK=${deployBlock}`);
+  log(`  ORACLE_MIN_TWAP_INTERVAL=${oracleConfig.minInterval}`);
+  log(`  ORACLE_MAX_AGE=${oracleConfig.maxAge}`);
+  log(`  ORACLE_MAX_RATE_CHANGE_BPS=${oracleConfig.maxRateChangeBps}`);
   log(`${"═".repeat(60)}\n`);
 }
 

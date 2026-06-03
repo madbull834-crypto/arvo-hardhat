@@ -29,7 +29,9 @@ const USDT_ABI = [
 
 const POOL_ABI = [
   "function getPoolStats(uint8 poolId) view returns (uint256 accumulated,uint256 weight,uint256 target,uint256 memberCount)",
-  "function getMemberStats(address member,uint8 poolId) view returns (bool active,uint256 totalReceived,uint256 remaining)"
+  "function getMemberStats(address member,uint8 poolId) view returns (bool active,uint256 totalReceived,uint256 remaining)",
+  "function getPancakeOracleState() view returns (address pair,bool enabled,bool ready,uint256 rate,uint256 minInterval,uint256 maxAge,uint256 lastRateTimestamp)",
+  "function previewOracleRate() view returns (uint256 rate,uint256 elapsed,bool canUpdate)"
 ];
 
 const ORBD_ABI = [
@@ -321,12 +323,13 @@ async function refresh() {
       state.readOrbd.symbol().catch(() => "ORBD")
     ]);
 
-    const [registeredEvents, directEvents, levelEvents, history, poolStats, levelStats, treeMembers, directReferralAddresses, incomeTotals] = await Promise.all([
+    const [registeredEvents, directEvents, levelEvents, history, poolStats, oracleState, levelStats, treeMembers, directReferralAddresses, incomeTotals] = await Promise.all([
       queryRegistrations(state.account, fromBlock, latest),
       queryDirects(state.account, fromBlock, latest),
       queryLevelIncome(state.account, fromBlock, latest),
       queryHistory(state.account, fromBlock, latest),
       queryPoolStats(state.account),
+      queryOracleState(),
       queryLevelStats(state.account),
       queryTeamFromContract(state.account),
       state.readMatrix.getDirectReferrals(state.account).catch(() => []),
@@ -355,6 +358,7 @@ async function refresh() {
       levelEvents,
       history,
       poolStats,
+      oracleState,
       levelStats,
       treeMembers,
       directReferralAddresses,
@@ -596,6 +600,28 @@ async function queryPoolStats(account) {
   return Promise.all(jobs);
 }
 
+async function queryOracleState() {
+  try {
+    const [stateResult, preview] = await Promise.all([
+      state.readPool.getPancakeOracleState(),
+      state.readPool.previewOracleRate().catch(() => null),
+    ]);
+
+    return {
+      pair: stateResult.pair,
+      enabled: stateResult.enabled,
+      ready: stateResult.ready,
+      rate: stateResult.rate,
+      minInterval: stateResult.minInterval,
+      maxAge: stateResult.maxAge,
+      lastRateTimestamp: stateResult.lastRateTimestamp,
+      preview,
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function validateRegistration(referrer) {
   if (!ethers.isAddress(referrer)) throw new Error("Enter a valid upline address.");
   if (ethers.getAddress(referrer) === state.account) throw new Error("You cannot use your own address as upline.");
@@ -746,6 +772,13 @@ function dashboard() {
   const totalOrbdReceived  = data.poolStats
     .filter(Boolean)
     .reduce((sum, s) => sum + (s.member?.totalReceived || 0n), 0n);
+  const oracle = data.oracleState;
+  const oracleRate = oracle?.rate ? `${formatOrbd(oracle.rate)} ORBD / USDT` : "-";
+  const oracleStatus = !oracle
+    ? "Unavailable"
+    : oracle.enabled
+      ? oracle.ready ? "Ready" : "Waiting for TWAP"
+      : "Disabled";
 
   const rankRows = ranks.map((rank, i) => {
     const level = i + 1;
@@ -822,6 +855,7 @@ function dashboard() {
       <div class="income-tile"><div class="amount">$ ${formatUsdt(user.claimableUsdt)}</div><strong>Withdrawable Income</strong><button class="tiny-black" data-action="withdraw" ${state.busy || user.claimableUsdt === 0n ? "disabled" : ""}>Withdraw</button></div>
       <div class="income-tile"><div class="amount">${formatOrbd(data.orbdBalance)} ORBD</div><strong>ORBD Balance</strong></div>
       <div class="income-tile"><div class="amount">${formatOrbd(totalOrbdReceived)} ORBD</div><strong>Total ORBD Earned</strong></div>
+      <div class="income-tile"><div class="amount">${oracleRate}</div><strong>Oracle Rate</strong><span>${oracleStatus}</span></div>
       <div class="income-tile"><div class="amount">$ ${formatUsdt(totalIncome)}</div><strong>Total USDT Income</strong></div>
     </section>
     <div class="section-label">Level Income (Levels 1–12)</div>
@@ -837,6 +871,7 @@ function dashboard() {
       <div class="address-chip">Contract Address : ${shortAddress(CONFIG.contracts.matrix)} <button class="tiny-black" data-copy="${CONFIG.contracts.matrix}">Copy</button></div>
       <div class="address-chip">USDT Address : ${shortAddress(CONFIG.contracts.usdt)} <button class="tiny-black" data-copy="${CONFIG.contracts.usdt}">Copy</button></div>
       <div class="address-chip">ORBD Address : ${shortAddress(CONFIG.contracts.orbd)} <button class="tiny-black" data-copy="${CONFIG.contracts.orbd}">Copy</button></div>
+      ${CONFIG.contracts.oraclePair ? `<div class="address-chip">Oracle Pair : ${shortAddress(CONFIG.contracts.oraclePair)} <button class="tiny-black" data-copy="${CONFIG.contracts.oraclePair}">Copy</button></div>` : ""}
     </footer>
   `;
 }

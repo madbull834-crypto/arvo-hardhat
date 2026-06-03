@@ -6,10 +6,11 @@
  *
  * Required .env:
  *   ETHERSCAN_API_KEY
- *   USDT_ADDRESS
- *   ORBD_TOKEN_ADDRESS
- *   ARVO_WEEKLY_POOL_ADDRESS
- *   ARVO_MATRIX_ADDRESS
+ *
+ * Address source:
+ *   Preferred: deployments/sepolia.json from deploy_sepolia.js
+ *   Fallback:  USDT_ADDRESS, ORBD_TOKEN_ADDRESS, ORBD_USDT_PAIR_ADDRESS,
+ *              ARVO_WEEKLY_POOL_ADDRESS, ARVO_MATRIX_ADDRESS
  */
 const { ethers, network, run, upgrades } = require("hardhat");
 const path = require("path");
@@ -21,11 +22,12 @@ function step(msg) { console.log(`\n${"─".repeat(56)}\n  ${msg}`); }
 async function verifyOne(label, address, contractPath, constructorArgs = []) {
   log(`  Verifying ${label} at ${address}`);
   try {
-    await run("verify:verify", {
+    const args = {
       address,
-      contract: contractPath,
       constructorArguments: constructorArgs,
-    });
+    };
+    if (contractPath) args.contract = contractPath;
+    await run("verify:verify", args);
     log(`  ${label}: ✓ verified`);
   } catch (err) {
     const msg = err.message || "";
@@ -33,7 +35,7 @@ async function verifyOne(label, address, contractPath, constructorArgs = []) {
       log(`  ${label}: already verified ✓`);
     } else {
       log(`  ${label}: FAILED — ${msg}`);
-      log(`  Retry: npx hardhat verify --network sepolia ${address}`);
+      log(`  Retry manually if needed: npx hardhat verify --network sepolia ${address}`);
     }
   }
 }
@@ -54,6 +56,7 @@ async function main() {
   const {
     USDT_ADDRESS,
     ORBD_TOKEN_ADDRESS,
+    ORBD_USDT_PAIR_ADDRESS,
     ARVO_WEEKLY_POOL_ADDRESS,
     ARVO_MATRIX_ADDRESS,
     VERIFY_ORBD_MOCK,
@@ -69,12 +72,19 @@ async function main() {
 
   const usdt      = USDT_ADDRESS              || manifest?.contracts?.usdt;
   const orbd      = ORBD_TOKEN_ADDRESS        || manifest?.contracts?.orbd;
+  const oraclePair= ORBD_USDT_PAIR_ADDRESS    || manifest?.contracts?.oraclePair || manifest?.oracle?.pair;
   const pool      = ARVO_WEEKLY_POOL_ADDRESS  || manifest?.contracts?.weeklyPool;
   const matrix    = ARVO_MATRIX_ADDRESS       || manifest?.contracts?.matrix;
   const poolImpl  = manifest?.contracts?.weeklyPoolImpl;
   const matrixImpl= manifest?.contracts?.matrixImpl;
 
-  for (const [name, addr] of [["USDT", usdt], ["ORBD", orbd], ["Pool", pool], ["Matrix", matrix]]) {
+  for (const [name, addr] of [
+    ["USDT", usdt],
+    ["ORBD", orbd],
+    ["ORBD/USDT oracle pair", oraclePair],
+    ["Pool", pool],
+    ["Matrix", matrix],
+  ]) {
     if (!addr || !ethers.isAddress(addr)) throw new Error(`${name} address missing or invalid`);
     const code = await ethers.provider.getCode(addr);
     if (code === "0x") throw new Error(`${name} (${addr}) has no bytecode on Sepolia`);
@@ -86,6 +96,7 @@ async function main() {
   log(`  Network: ${network.name}`);
   log(`  USDT:    ${usdt}`);
   log(`  ORBD:    ${orbd}`);
+  log(`  Pair:    ${oraclePair}`);
   log(`  Pool:    ${pool}`);
   log(`  Matrix:  ${matrix}`);
 
@@ -93,12 +104,14 @@ async function main() {
   await new Promise(r => setTimeout(r, 20_000));
 
   // Verify MockUSDT
-  step("1 / 4 — MockUSDT");
+  step("1 / 5 — MockUSDT");
   await verifyOne("MockUSDT", usdt, "contracts/mocks/MockUSDT.sol:MockUSDT");
 
   // Verify ORBD (mock or real)
-  step("2 / 4 — ORBDToken");
-  const orbdIsMock = VERIFY_ORBD_MOCK === "true";
+  step("2 / 5 — ORBDToken");
+  // deploy_sepolia.js deploys MockORBDToken. Set VERIFY_ORBD_MOCK=false only
+  // if you intentionally pointed Sepolia at an ORBDToken UUPS proxy.
+  const orbdIsMock = VERIFY_ORBD_MOCK !== "false";
   if (orbdIsMock) {
     await verifyOne("MockORBDToken", orbd, "contracts/mocks/MockORBDToken.sol:MockORBDToken");
   } else {
@@ -107,32 +120,42 @@ async function main() {
     await verifyOne("ORBDToken implementation", orbdImpl, "contracts/tokens/ORBDToken.sol:ORBDToken");
   }
 
+  step("3 / 5 — MockPancakeV2Pair");
+  await verifyOne(
+    "MockPancakeV2Pair",
+    oraclePair,
+    "contracts/mocks/MockPancakeV2Pair.sol:MockPancakeV2Pair",
+    [usdt, orbd]
+  );
+
   // Verify ARVOWeeklyPool implementation
-  step("3 / 4 — ARVOWeeklyPool");
+  step("4 / 5 — ARVOWeeklyPool");
   const resolvedPoolImpl = poolImpl || await getImpl(pool);
   await verifyOne(
     "ARVOWeeklyPool implementation",
     resolvedPoolImpl,
     "contracts/core/ARVOWeeklyPool.sol:ARVOWeeklyPool"
   );
-  // Also submit proxy address so Etherscan shows the proxy UI
-  await verifyOne("ARVOWeeklyPool proxy", pool, "contracts/core/ARVOWeeklyPool.sol:ARVOWeeklyPool");
+  log(`  ARVOWeeklyPool proxy address: ${pool}`);
+  log("  Proxy source verification is skipped; implementation source is verified above.");
 
   // Verify ARVOMatrix implementation
-  step("4 / 4 — ARVOMatrix");
+  step("5 / 5 — ARVOMatrix");
   const resolvedMatrixImpl = matrixImpl || await getImpl(matrix);
   await verifyOne(
     "ARVOMatrix implementation",
     resolvedMatrixImpl,
     "contracts/core/ARVOMatrix.sol:ARVOMatrix"
   );
-  await verifyOne("ARVOMatrix proxy", matrix, "contracts/core/ARVOMatrix.sol:ARVOMatrix");
+  log(`  ARVOMatrix proxy address: ${matrix}`);
+  log("  Proxy source verification is skipped; implementation source is verified above.");
 
   log(`\n${"═".repeat(56)}`);
   log(`  Verification complete.`);
   log(`  View on Etherscan:`);
   log(`    USDT:   https://sepolia.etherscan.io/address/${usdt}`);
   log(`    ORBD:   https://sepolia.etherscan.io/address/${orbd}`);
+  log(`    Pair:   https://sepolia.etherscan.io/address/${oraclePair}`);
   log(`    Pool:   https://sepolia.etherscan.io/address/${pool}`);
   log(`    Matrix: https://sepolia.etherscan.io/address/${matrix}`);
   log(`${"═".repeat(56)}\n`);

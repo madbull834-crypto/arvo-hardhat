@@ -1,0 +1,41 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "deployedAt": "2026-06-03T18:21:49.315Z",
+  "deployBlock": 10983010,
+  "deployer": "0xc0E6c08d2d0D8A61E43a5Dd4f3FDFF83F2079Da3",
+  "genesis": "0xc0E6c08d2d0D8A61E43a5Dd4f3FDFF83F2079Da3",
+  "skipAdmin1": "0xF3f918De78D047414c6b648C46aA3DeC42C64BD4",
+  "skipAdmin2": "0x8501c6325410d2e9dF1Ead9a10C331a28CA0e489",
+  "contracts": {
+    "usdt": "0x2CdFf068C542E0877F5099c27737aCE3fA978944",
+    "orbd": "0x98cc81c477C9Ea7f05b973f86efB4f75B0709029",
+    "oraclePair": "0x1c9Bb4b8644804E9b255dBEa2a6DF4dcAB4adA18",
+    "weeklyPool": "0xB9d1AA84007AAb57bEb377aa02cc9518A06AD709",
+    "weeklyPoolImpl": "0x0185A3e36bf84e36989d6A2151992f4026E6f79b",
+    "matrix": "0x481fF901F0CF71dCc07b13B9C7bF839a2C499281",
+    "matrixImpl": "0xcEc1baF6A8CdD3bd3fB8f1e8F44457B24CA6b743"
+  },
+  "poolWeights": [
+    910,
+    909,
+    909,
+    909,
+    909,
+    909,
+    909,
+    909,
+    909,
+    909,
+    909
+  ],
+  "oracle": {
+    "pair": "0x1c9Bb4b8644804E9b255dBEa2a6DF4dcAB4adA18",
+    "usdtReserve": "1000000000000000000000",
+    "orbdReserve": "2000000000000000000000",
+    "minTwapInterval": 3600,
+    "maxAge": 777600,
+    "maxRateChangeBps": 2000,
+    "expectedInitialRate": "2000000000000000000"
+  }
+}
