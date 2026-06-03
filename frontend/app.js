@@ -80,35 +80,21 @@ const tabs = [
   ["tree", "Tree"]
 ];
 
-// 12 ranks matching levels 1–12
-const ranks = [
-  "Basic",
-  "Standard",
-  "Silver",
-  "Gold",
-  "Pearl",
-  "Emerald",
-  "Platinum",
-  "Elite",
-  "Diamond",
-  "Royal Diamond",
-  "Grand Master",
-  "Legend"
-];
+const ranks = Array.from({ length: MAX_LEVEL }, (_, index) => `Level ${index + 1}`);
 
 const packages = [
-  ["11 USDT", "Basic"],
-  ["22 USDT", "Standard"],
-  ["43 USDT", "Silver"],
-  ["84 USDT", "Gold"],
-  ["165 USDT", "Pearl"],
-  ["326 USDT", "Emerald"],
-  ["647 USDT", "Platinum"],
-  ["1288 USDT", "Elite"],
-  ["2569 USDT", "Diamond"],
-  ["5130 USDT", "Royal Diamond"],
-  ["10260 USDT", "Grand Master"],
-  ["20520 USDT", "Legend"]
+  ["11 USDT", "Level 1"],
+  ["22 USDT", "Level 2"],
+  ["43 USDT", "Level 3"],
+  ["84 USDT", "Level 4"],
+  ["165 USDT", "Level 5"],
+  ["326 USDT", "Level 6"],
+  ["647 USDT", "Level 7"],
+  ["1288 USDT", "Level 8"],
+  ["2569 USDT", "Level 9"],
+  ["5130 USDT", "Level 10"],
+  ["10260 USDT", "Level 11"],
+  ["20520 USDT", "Level 12"]
 ];
 
 const app = document.querySelector("#app");
