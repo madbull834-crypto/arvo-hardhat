@@ -139,12 +139,12 @@ describe("ARVOMatrix", function () {
       expect(dashboard.leftChild).to.equal(users[0].address);
       expect(dashboard.rightChild).to.equal(users[1].address);
       expect(dashboard.directIncome).to.equal(DIRECT_FEE * 2n);
-      expect(dashboard.levelIncome).to.equal(ethers.parseUnits("10", 6));
+      expect(dashboard.levelIncome).to.equal(ethers.parseUnits("10", 18));
       expect(dashboard.skippedIncome).to.equal(0n);
 
       const totals = await matrix.getIncomeTotals(genesis.address);
       expect(totals.directIncome).to.equal(DIRECT_FEE * 2n);
-      expect(totals.levelIncome).to.equal(ethers.parseUnits("10", 6));
+      expect(totals.levelIncome).to.equal(ethers.parseUnits("10", 18));
     });
   });
 
@@ -249,7 +249,7 @@ describe("ARVOMatrix", function () {
       const levelSubCount = emptyLevelSubCount();
       const lockedFunds = emptyLockedFunds();
       levelSubCount[1] = 2;
-      lockedFunds[2] = ethers.parseUnits("5", 6);
+      lockedFunds[2] = ethers.parseUnits("5", 18);
 
       await expect(
         matrix.migrateUsers([
@@ -260,7 +260,7 @@ describe("ARVOMatrix", function () {
             leftChild: users[2].address,
             currentLevel: 3,
             directCount: 2n,
-            claimableUsdt: ethers.parseUnits("12.5", 6),
+            claimableUsdt: ethers.parseUnits("12.5", 18),
             levelSubCount,
             lockedFunds,
           }),
@@ -272,7 +272,7 @@ describe("ARVOMatrix", function () {
       expect(info.referrer).to.equal(genesis.address);
       expect(info.currentLevel).to.equal(3);
       expect(info.directCount).to.equal(2n);
-      expect(info.claimableUsdt).to.equal(ethers.parseUnits("12.5", 6));
+      expect(info.claimableUsdt).to.equal(ethers.parseUnits("12.5", 18));
 
       const tree = await matrix.getTreeInfo(users[0].address);
       expect(tree.parent).to.equal(genesis.address);
@@ -318,7 +318,7 @@ describe("ARVOMatrix", function () {
         ], 2)
       ).to.emit(matrix, "PlacementQueueMigrated").withArgs(5, 2);
 
-      await usdt.mint(users[4].address, ethers.parseUnits("100", 6));
+      await usdt.mint(users[4].address, ethers.parseUnits("100", 18));
       await usdt.connect(users[4]).approve(await matrix.getAddress(), ethers.MaxUint256);
       await matrix.connect(users[4]).register(genesis.address);
 
@@ -407,10 +407,11 @@ describe("ARVOMatrix", function () {
       await expect(
         matrix.migrateUserAccounting(
           [genesis.address],
-          [ethers.parseUnits("10", 6)],
-          [ethers.parseUnits("7.5", 6)],
-          [ethers.parseUnits("2.5", 6)],
-          [ethers.parseUnits("1", 6)]
+          [ethers.parseUnits("10", 18)],
+          [ethers.parseUnits("7.5", 18)],
+          [ethers.parseUnits("2.5", 18)],
+          [ethers.parseUnits("1", 18)],
+          true
         )
       ).to.emit(matrix, "UserAccountingMigrated").withArgs(genesis.address);
 
@@ -420,10 +421,10 @@ describe("ARVOMatrix", function () {
       ]);
 
       const totals = await matrix.getIncomeTotals(genesis.address);
-      expect(totals.directIncome).to.equal(ethers.parseUnits("10", 6));
-      expect(totals.levelIncome).to.equal(ethers.parseUnits("7.5", 6));
-      expect(totals.skippedIncome).to.equal(ethers.parseUnits("2.5", 6));
-      expect(totals.withdrawn).to.equal(ethers.parseUnits("1", 6));
+      expect(totals.directIncome).to.equal(ethers.parseUnits("10", 18));
+      expect(totals.levelIncome).to.equal(ethers.parseUnits("7.5", 18));
+      expect(totals.skippedIncome).to.equal(ethers.parseUnits("2.5", 18));
+      expect(totals.withdrawn).to.equal(ethers.parseUnits("1", 18));
     });
   });
 
@@ -478,10 +479,10 @@ describe("ARVOMatrix", function () {
       await matrix.connect(users[2]).register(users[0].address);
       await expect(matrix.connect(users[3]).register(users[0].address))
         .to.emit(matrix, "UpgradeFundPaid")
-        .withArgs(users[0].address, genesis.address, 2, ethers.parseUnits("5", 6));
+        .withArgs(users[0].address, genesis.address, 2, ethers.parseUnits("5", 18));
 
       const after = await usdt.balanceOf(genesis.address);
-      expect(after - before).to.equal(ethers.parseUnits("5", 6));
+      expect(after - before).to.equal(ethers.parseUnits("5", 18));
 
       const info = await matrix.getUserInfo(users[0].address);
       expect(info.currentLevel).to.equal(2);
@@ -533,17 +534,17 @@ describe("ARVOMatrix", function () {
           rightChild: ethers.ZeroAddress,
           currentLevel: 1,
           directCount: 0n,
-          claimableUsdt: ethers.parseUnits("1.25", 6),
+          claimableUsdt: ethers.parseUnits("1.25", 18),
           levelSubCount: Array(13).fill(0),
           lockedFunds: Array(13).fill(0n),
         },
       ]);
 
-      await usdt.mint(await matrix.getAddress(), ethers.parseUnits("1.25", 6));
+      await usdt.mint(await matrix.getAddress(), ethers.parseUnits("1.25", 18));
 
       const before = await usdt.balanceOf(users[0].address);
       const claimable = (await matrix.getUserInfo(users[0].address)).claimableUsdt;
-      expect(claimable).to.equal(ethers.parseUnits("1.25", 6));
+      expect(claimable).to.equal(ethers.parseUnits("1.25", 18));
 
       await expect(matrix.connect(users[0]).withdraw())
         .to.emit(matrix, "Withdrawal")

@@ -20,14 +20,14 @@ async function main() {
   const [signer] = await ethers.getSigners();
 
   console.log("=== ARVO Contract Balances ===");
-  console.log("ARVOMatrix USDT balance:    ", ethers.formatUnits(await usdt.balanceOf(ARVO_MATRIX_ADDRESS), 6));
-  console.log("ARVOWeeklyPool USDT balance:", ethers.formatUnits(await usdt.balanceOf(ARVO_WEEKLY_POOL_ADDRESS), 6));
+  console.log("ARVOMatrix USDT balance:    ", ethers.formatUnits(await usdt.balanceOf(ARVO_MATRIX_ADDRESS), 18));
+  console.log("ARVOWeeklyPool USDT balance:", ethers.formatUnits(await usdt.balanceOf(ARVO_WEEKLY_POOL_ADDRESS), 18));
   console.log("ORBD total supply:          ", ethers.formatUnits(await orbd.totalSupply(), 18));
   console.log("Total members:              ", (await matrix.totalMembers()).toString());
 
   console.log("\n=== Signer Wallet ===");
   console.log("Address:", signer.address);
-  console.log("USDT:   ", ethers.formatUnits(await usdt.balanceOf(signer.address), 6));
+  console.log("USDT:   ", ethers.formatUnits(await usdt.balanceOf(signer.address), 18));
   console.log("ORBD:   ", ethers.formatUnits(await orbd.balanceOf(signer.address), 18));
 }
 

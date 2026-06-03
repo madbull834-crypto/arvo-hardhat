@@ -12,11 +12,22 @@
  *
  * Required unless DEPLOY_TOKENS=true:
  *   USDT_ADDRESS, ORBD_TOKEN_ADDRESS
+ *
+ * Optional production oracle:
+ *   ORBD_USDT_PAIR_ADDRESS=<PancakeSwap V2 ORBD/USDT pair>
+ *   ORACLE_MIN_TWAP_INTERVAL=86400
+ *   ORACLE_MAX_AGE=777600
+ *   ORACLE_MAX_RATE_CHANGE_BPS=2000
+ *   RATE_UPDATER_ADDRESS=<keeper wallet>
+ *   DISTRIBUTOR_ADDRESS=<weekly distribution wallet>
  */
 const { ethers, network, upgrades } = require("hardhat");
 
 const DEFAULT_POOL_WEIGHTS = [910, 909, 909, 909, 909, 909, 909, 909, 909, 909, 909];
 const DEFAULT_ORBD_MAX_SUPPLY = ethers.parseUnits("1000000000", 18);
+const DEFAULT_ORACLE_MIN_TWAP_INTERVAL = 24 * 60 * 60;
+const DEFAULT_ORACLE_MAX_AGE = 9 * 24 * 60 * 60;
+const DEFAULT_ORACLE_MAX_RATE_CHANGE_BPS = 2000;
 
 function requireAddress(name) {
   const value = process.env[name];
@@ -31,6 +42,16 @@ function optionalAddress(name) {
   if (!value) return undefined;
   if (!ethers.isAddress(value)) throw new Error(`${name} must be a valid address`);
   return value;
+}
+
+function optionalUint(name, fallback) {
+  const value = process.env[name];
+  if (!value) return fallback;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new Error(`${name} must be a non-negative integer`);
+  }
+  return parsed;
 }
 
 function parsePoolWeights() {
@@ -110,6 +131,47 @@ async function grantOrbdMinter(orbdAddress, poolAddress) {
   }
 }
 
+async function configurePancakeOracleIfSet(pool) {
+  const pairAddress = optionalAddress("ORBD_USDT_PAIR_ADDRESS");
+  if (!pairAddress) {
+    console.log("Pancake ORBD/USDT oracle not configured (ORBD_USDT_PAIR_ADDRESS not set).");
+    return;
+  }
+
+  const minInterval = optionalUint("ORACLE_MIN_TWAP_INTERVAL", DEFAULT_ORACLE_MIN_TWAP_INTERVAL);
+  const maxAge = optionalUint("ORACLE_MAX_AGE", DEFAULT_ORACLE_MAX_AGE);
+  const maxRateChangeBps = optionalUint("ORACLE_MAX_RATE_CHANGE_BPS", DEFAULT_ORACLE_MAX_RATE_CHANGE_BPS);
+
+  await (await pool.configurePancakeOracle(
+    pairAddress,
+    minInterval,
+    maxAge,
+    maxRateChangeBps
+  )).wait();
+
+  console.log("Pancake ORBD/USDT oracle configured:");
+  console.log("ORBD_USDT_PAIR_ADDRESS=", pairAddress);
+  console.log("ORACLE_MIN_TWAP_INTERVAL=", minInterval);
+  console.log("ORACLE_MAX_AGE=", maxAge);
+  console.log("ORACLE_MAX_RATE_CHANGE_BPS=", maxRateChangeBps);
+}
+
+async function grantOptionalOperationalRoles(pool) {
+  const rateUpdater = optionalAddress("RATE_UPDATER_ADDRESS");
+  if (rateUpdater) {
+    const role = await pool.RATE_UPDATER_ROLE();
+    await (await pool.grantRole(role, rateUpdater)).wait();
+    console.log("RATE_UPDATER_ROLE granted to:", rateUpdater);
+  }
+
+  const distributor = optionalAddress("DISTRIBUTOR_ADDRESS");
+  if (distributor) {
+    const role = await pool.DISTRIBUTOR_ROLE();
+    await (await pool.grantRole(role, distributor)).wait();
+    console.log("DISTRIBUTOR_ROLE granted to:", distributor);
+  }
+}
+
 async function main() {
   const [deployer] = await ethers.getSigners();
   const genesis = requireAddress("GENESIS_ADDRESS");
@@ -138,6 +200,8 @@ async function main() {
   console.log("ARVO_WEEKLY_POOL_IMPLEMENTATION=", poolImplementation);
 
   await grantOrbdMinter(orbdAddress, poolAddress);
+  await configurePancakeOracleIfSet(pool);
+  await grantOptionalOperationalRoles(pool);
 
   console.log("\nDeploying ARVOMatrix proxy...");
   const ARVOMatrix = await ethers.getContractFactory("ARVOMatrix");
@@ -162,6 +226,14 @@ async function main() {
   console.log(`ARVO_WEEKLY_POOL_ADDRESS=${poolAddress}`);
   console.log(`ARVO_MATRIX_ADDRESS=${matrixAddress}`);
   console.log(`POOL_WEIGHTS=${weights.join(",")}`);
+  if (process.env.ORBD_USDT_PAIR_ADDRESS) {
+    console.log(`ORBD_USDT_PAIR_ADDRESS=${process.env.ORBD_USDT_PAIR_ADDRESS}`);
+    console.log(`ORACLE_MIN_TWAP_INTERVAL=${optionalUint("ORACLE_MIN_TWAP_INTERVAL", DEFAULT_ORACLE_MIN_TWAP_INTERVAL)}`);
+    console.log(`ORACLE_MAX_AGE=${optionalUint("ORACLE_MAX_AGE", DEFAULT_ORACLE_MAX_AGE)}`);
+    console.log(`ORACLE_MAX_RATE_CHANGE_BPS=${optionalUint("ORACLE_MAX_RATE_CHANGE_BPS", DEFAULT_ORACLE_MAX_RATE_CHANGE_BPS)}`);
+  }
+  if (process.env.RATE_UPDATER_ADDRESS) console.log(`RATE_UPDATER_ADDRESS=${process.env.RATE_UPDATER_ADDRESS}`);
+  if (process.env.DISTRIBUTOR_ADDRESS) console.log(`DISTRIBUTOR_ADDRESS=${process.env.DISTRIBUTOR_ADDRESS}`);
   console.log("VERIFY_ORBD_MOCK=false");
 }
 

@@ -5,7 +5,9 @@ require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
 const root = __dirname;
 const port = Number(process.env.PORT || 5173);
-const host = "127.0.0.1";
+// In production (NODE_ENV=production or HOST=0.0.0.0) bind to all interfaces
+// so nginx / cloud load balancers can reach it. Locally stays on 127.0.0.1.
+const host = process.env.HOST || (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1");
 const types = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",

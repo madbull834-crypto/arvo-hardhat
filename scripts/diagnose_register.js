@@ -6,7 +6,7 @@
  */
 const { ethers, network } = require("hardhat");
 
-const USDT_DECIMALS = 6;
+const USDT_DECIMALS = 18;
 const JOIN_FEE = ethers.parseUnits("10", USDT_DECIMALS);
 
 async function requireAddress(name, value) {

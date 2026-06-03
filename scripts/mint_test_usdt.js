@@ -20,7 +20,7 @@ async function main() {
   }
 
   const usdt = await ethers.getContractAt("MockUSDT", usdtAddress);
-  const parsed = ethers.parseUnits(amount, 6);
+  const parsed = ethers.parseUnits(amount, 18);
 
   console.log(`Minting ${amount} USDT to ${to} from MockUSDT ${usdtAddress}`);
   const tx = await usdt.mint(to, parsed);
@@ -28,7 +28,7 @@ async function main() {
   await tx.wait();
 
   const balance = await usdt.balanceOf(to);
-  console.log("New balance:", ethers.formatUnits(balance, 6), "USDT");
+  console.log("New balance:", ethers.formatUnits(balance, 18), "USDT");
 }
 
 main().catch((error) => {

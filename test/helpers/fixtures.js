@@ -1,7 +1,7 @@
 const { ethers, upgrades } = require("hardhat");
 
 const POOL_COUNT   = 11;
-const USDT_DECIMALS = 6;
+const USDT_DECIMALS = 18;
 const JOIN_FEE     = ethers.parseUnits("10",  USDT_DECIMALS);
 const DIRECT_FEE   = ethers.parseUnits("5",   USDT_DECIMALS);
 const AUTO_UPGRADE_FUND = ethers.parseUnits("2.5", USDT_DECIMALS);

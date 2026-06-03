@@ -8,7 +8,7 @@
  */
 const { ethers, network, upgrades } = require("hardhat");
 
-const USDT_DECIMALS = 6;
+const USDT_DECIMALS = 18;
 const DEFAULT_ORBD_MAX_SUPPLY = ethers.parseUnits("1000000000", 18);
 
 function orbdMaxSupply() {
