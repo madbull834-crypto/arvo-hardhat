@@ -184,7 +184,10 @@ function normalizeError(error) {
   if (message.includes("NothingToWithdraw")) return "There is no withdrawable balance.";
   if (message.includes("ERC20InsufficientAllowance")) return "Approve USDT before registering.";
   if (message.includes("ERC20InsufficientBalance")) return "Your USDT balance is too low.";
+  if (message.includes("missing revert data") || message.includes("could not decode result data")) return "Contract read failed. Check that the frontend is using the latest deployed addresses for this network.";
+  if (message.includes("network changed") || message.includes("chain changed")) return "Wallet network changed. Refresh the page and connect again.";
   if (message.includes("could not coalesce error")) return "RPC returned an unreadable error. Refresh once and check the transaction on BscScan.";
+  if (message.includes("failed to detect network") || message.includes("getaddrinfo") || message.includes("ENOTFOUND")) return "Configured RPC is not reachable. The app will try your wallet provider after connection.";
   return message;
 }
 
@@ -234,6 +237,14 @@ function makeReadContracts() {
   state.readOrbd   = new ethers.Contract(CONFIG.contracts.orbd,   ORBD_ABI,   state.reader);
 }
 
+function makeReadContractsWith(provider) {
+  state.reader = provider;
+  state.readMatrix = new ethers.Contract(CONFIG.contracts.matrix, MATRIX_ABI, provider);
+  state.readUsdt   = new ethers.Contract(CONFIG.contracts.usdt,   USDT_ABI,   provider);
+  state.readPool   = new ethers.Contract(CONFIG.contracts.weeklyPool, POOL_ABI, provider);
+  state.readOrbd   = new ethers.Contract(CONFIG.contracts.orbd,   ORBD_ABI,   provider);
+}
+
 async function ensureChain() {
   if (!window.ethereum) throw new Error("Wallet not found. Install MetaMask or another injected wallet.");
   const hexChain = `0x${CONFIG.chainId.toString(16)}`;
@@ -277,6 +288,13 @@ async function connect({ silent = false } = {}) {
     state.pool     = new ethers.Contract(CONFIG.contracts.weeklyPool,  POOL_ABI,   state.signer);
     state.treeRoot = state.account;
     localStorage.setItem(SESSION_KEY, "1");
+
+    try {
+      await state.reader.getBlockNumber();
+    } catch {
+      makeReadContractsWith(state.provider);
+    }
+
     await refresh();
   } catch (error) {
     if (!silent) setStatus(normalizeError(error), "error");
@@ -302,7 +320,17 @@ async function refresh() {
   render();
 
   try {
-    const latest = await state.reader.getBlockNumber();
+    let latest;
+    try {
+      latest = await state.reader.getBlockNumber();
+    } catch (error) {
+      if (state.provider && state.reader !== state.provider) {
+        makeReadContractsWith(state.provider);
+        latest = await state.reader.getBlockNumber();
+      } else {
+        throw error;
+      }
+    }
     const configuredStart = Number(CONFIG.eventStartBlock || 0);
     const fromBlock = configuredStart > 0 ? configuredStart : Math.max(0, latest - EVENT_LOOKBACK_BLOCKS);
 
