@@ -716,7 +716,6 @@ function shell(content) {
         ${tabs.map(([id, label]) => `<button class="${state.tab === id ? "active" : ""}" data-tab="${id}" ${state.busy ? "disabled" : ""}>${label}</button>`).join("")}
       </nav>
       <main class="content">${statusHtml()}${content}</main>
-      <button class="floating-refresh" data-action="refresh" title="Refresh" ${state.loading || state.busy ? "disabled" : ""}>${spinner() || "R"}</button>
     </div>
   `;
 }
