@@ -1064,7 +1064,7 @@ function community() {
 }
 
 function tree() {
-  return treeView("Community Tree", true);
+  return treeView("Team Tree", true);
 }
 
 function treeView(title, showSearch) {
@@ -1081,7 +1081,7 @@ function treeView(title, showSearch) {
 
   const treeNode = (address, info, label, actionLabel, actionAddress = address) => {
     const empty   = !address;
-    const rank    = info ? rankName(info.currentLevel) : "Unknown";
+    const rank    = info ? rankName(info.currentLevel) : "Level unknown";
     const directs = info ? Number(info.directCount || 0n) : 0;
     return `
       <article class="tree-node ${empty ? "is-empty" : ""}">
@@ -1089,10 +1089,10 @@ function treeView(title, showSearch) {
           <span class="tree-avatar"></span>
           <span class="tree-side">${label}</span>
         </div>
-        <strong>${empty ? "Open Slot" : shortAddress(address)}</strong>
+        <strong>${empty ? "Empty Position" : shortAddress(address)}</strong>
         <div class="tree-meta">
-          <span>${empty ? "Available" : rank}</span>
-          <span>${empty ? "0 Directs" : `${directs} Directs`}</span>
+          <span>${empty ? "No member here yet" : rank}</span>
+          <span>${empty ? "Ready for next member" : `${directs} direct referrals`}</span>
         </div>
         <button ${empty ? "disabled" : `data-tree-address="${actionAddress}"`}>${actionLabel}</button>
       </article>
@@ -1103,21 +1103,21 @@ function treeView(title, showSearch) {
     <section class="community-tool">
       <div class="tree-header">
         <div>
-          <p>Binary Placement</p>
+          <p>This shows one wallet, then the two people directly placed below it.</p>
           <h1>${title}</h1>
         </div>
-        ${showSearch ? `<form class="search-row" data-tree-search><input name="address" placeholder="Wallet address" value="${root !== state.account ? root : ""}"><button>Search</button></form>` : ""}
+        ${showSearch ? `<form class="search-row" data-tree-search><input name="address" placeholder="Paste wallet address" value="${root !== state.account ? root : ""}"><button>Show Tree</button></form>` : ""}
       </div>
       <div class="tree-board">
         <div class="tree-root">
-          ${treeNode(root, rootInfo, "Root Member", sameAddress(root, state.account) ? "Current" : "Back to Me", sameAddress(root, state.account) ? root : state.account)}
+          ${treeNode(root, rootInfo, sameAddress(root, state.account) ? "Your Wallet" : "Selected Wallet", sameAddress(root, state.account) ? "You are here" : "Back to My Wallet", sameAddress(root, state.account) ? root : state.account)}
         </div>
         <div class="tree-connector" aria-hidden="true">
           <span></span>
         </div>
         <div class="tree-branches">
-          ${treeNode(left, leftInfo, "Left Leg", "View")}
-          ${treeNode(right, rightInfo, "Right Leg", "View")}
+          ${treeNode(left, leftInfo, "Left Side", "Show This Wallet")}
+          ${treeNode(right, rightInfo, "Right Side", "Show This Wallet")}
         </div>
       </div>
     </section>
