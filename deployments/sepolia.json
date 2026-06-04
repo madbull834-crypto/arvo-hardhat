@@ -1,20 +1,20 @@
 {
   "network": "sepolia",
   "chainId": 11155111,
-  "deployedAt": "2026-06-03T18:21:49.315Z",
-  "deployBlock": 10983010,
+  "deployedAt": "2026-06-04T17:32:25.360Z",
+  "deployBlock": 10989535,
   "deployer": "0xc0E6c08d2d0D8A61E43a5Dd4f3FDFF83F2079Da3",
   "genesis": "0xc0E6c08d2d0D8A61E43a5Dd4f3FDFF83F2079Da3",
   "skipAdmin1": "0xF3f918De78D047414c6b648C46aA3DeC42C64BD4",
   "skipAdmin2": "0x8501c6325410d2e9dF1Ead9a10C331a28CA0e489",
   "contracts": {
-    "usdt": "0x2CdFf068C542E0877F5099c27737aCE3fA978944",
-    "orbd": "0x98cc81c477C9Ea7f05b973f86efB4f75B0709029",
-    "oraclePair": "0x1c9Bb4b8644804E9b255dBEa2a6DF4dcAB4adA18",
-    "weeklyPool": "0xB9d1AA84007AAb57bEb377aa02cc9518A06AD709",
-    "weeklyPoolImpl": "0x0185A3e36bf84e36989d6A2151992f4026E6f79b",
-    "matrix": "0x481fF901F0CF71dCc07b13B9C7bF839a2C499281",
-    "matrixImpl": "0xcEc1baF6A8CdD3bd3fB8f1e8F44457B24CA6b743"
+    "usdt": "0xc82317aBF69b1BB26A24E3DD202d43C71800CC85",
+    "orbd": "0x150716Cc9e05ab8f92a6A37E48b3716Adb366619",
+    "oraclePair": "0x73AF8A17eA994b7f1BCBe8ba77FA0abB01bedE26",
+    "weeklyPool": "0xCEB1BA6f97D0583d2E0A54d2B64DF5ac4bb8b060",
+    "weeklyPoolImpl": "0x377D421b3512A142c49184a7bE4A648Dc1A7Ca91",
+    "matrix": "0xC74Fb87BA5B3363E77290759124eFb5D3434D10b",
+    "matrixImpl": "0x5cEB3D4d0C42a04dF0D2f969e33671Df8d6De3BE"
   },
   "poolWeights": [
     910,
@@ -30,7 +30,7 @@
     909
   ],
   "oracle": {
-    "pair": "0x1c9Bb4b8644804E9b255dBEa2a6DF4dcAB4adA18",
+    "pair": "0x73AF8A17eA994b7f1BCBe8ba77FA0abB01bedE26",
     "usdtReserve": "1000000000000000000000",
     "orbdReserve": "2000000000000000000000",
     "minTwapInterval": 3600,

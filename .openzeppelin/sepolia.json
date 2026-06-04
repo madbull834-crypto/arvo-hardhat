@@ -35,6 +35,16 @@
       "address": "0x481fF901F0CF71dCc07b13B9C7bF839a2C499281",
       "txHash": "0x93e99bc3869dcc3c305f65b31bca3093030a00b1fcec68d1c787aea939099bfa",
       "kind": "uups"
+    },
+    {
+      "address": "0xCEB1BA6f97D0583d2E0A54d2B64DF5ac4bb8b060",
+      "txHash": "0x2e083cb4f506d413b75def6e7cccedf63e650f6470e9ef0aa8f57a421b8e4c7e",
+      "kind": "uups"
+    },
+    {
+      "address": "0xC74Fb87BA5B3363E77290759124eFb5D3434D10b",
+      "txHash": "0xb9108cf4e451ba434bc826ce61c354f756f2f9956e75e024e8f8aac0841f2527",
+      "kind": "uups"
     }
   ],
   "impls": {
@@ -1504,7 +1514,11 @@
             }
           ]
         }
-      }
+      },
+      "allAddresses": [
+        "0x0185A3e36bf84e36989d6A2151992f4026E6f79b",
+        "0x377D421b3512A142c49184a7bE4A648Dc1A7Ca91"
+      ]
     },
     "2a172ec1cde756f0c21059a10f718d39024d6fb37e5039a7a901eca511014935": {
       "address": "0xcEc1baF6A8CdD3bd3fB8f1e8F44457B24CA6b743",
@@ -1745,6 +1759,355 @@
             "numberOfBytes": "32"
           },
           "t_struct(User)2595_storage": {
+            "label": "struct ARVOMatrix.User",
+            "members": [
+              {
+                "label": "isRegistered",
+                "type": "t_bool",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "referrer",
+                "type": "t_address",
+                "offset": 1,
+                "slot": "0"
+              },
+              {
+                "label": "parent",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "children",
+                "type": "t_array(t_address)2_storage",
+                "offset": 0,
+                "slot": "2"
+              },
+              {
+                "label": "currentLevel",
+                "type": "t_uint8",
+                "offset": 0,
+                "slot": "4"
+              },
+              {
+                "label": "directCount",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "5"
+              },
+              {
+                "label": "claimableUsdt",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "6"
+              },
+              {
+                "label": "levelSubCount",
+                "type": "t_array(t_uint256)13_storage",
+                "offset": 0,
+                "slot": "7"
+              },
+              {
+                "label": "lockedFunds",
+                "type": "t_array(t_uint256)13_storage",
+                "offset": 0,
+                "slot": "20"
+              }
+            ],
+            "numberOfBytes": "1056"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          }
+        },
+        "namespaces": {
+          "erc7201:openzeppelin.storage.Ownable": [
+            {
+              "contract": "OwnableUpgradeable",
+              "label": "_owner",
+              "type": "t_address",
+              "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:24",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Pausable": [
+            {
+              "contract": "PausableUpgradeable",
+              "label": "_paused",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol:21",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Initializable": [
+            {
+              "contract": "Initializable",
+              "label": "_initialized",
+              "type": "t_uint64",
+              "src": "@openzeppelin/contracts/proxy/utils/Initializable.sol:69",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "Initializable",
+              "label": "_initializing",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts/proxy/utils/Initializable.sol:73",
+              "offset": 8,
+              "slot": "0"
+            }
+          ]
+        }
+      }
+    },
+    "ecf46a097db288964fd0033629f1bf30f7f10e54f2fde7ef8d68067542538575": {
+      "address": "0x5cEB3D4d0C42a04dF0D2f969e33671Df8d6De3BE",
+      "txHash": "0x8b8dd2b07bbd5d9ec3efb3b84944a53f75f798551b4b175595e30020133f0132",
+      "layout": {
+        "solcVersion": "0.8.22",
+        "storage": [
+          {
+            "label": "_status",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint256",
+            "contract": "ReentrancyGuardUpgradeableLocal",
+            "src": "contracts/utils/ReentrancyGuardUpgradeableLocal.sol:10"
+          },
+          {
+            "label": "usdt",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_contract(IERC20)1831",
+            "contract": "ARVOMatrix",
+            "src": "contracts/core/ARVOMatrix.sol:46"
+          },
+          {
+            "label": "pool",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_contract(IARVOWeeklyPool)7703",
+            "contract": "ARVOMatrix",
+            "src": "contracts/core/ARVOMatrix.sol:46"
+          },
+          {
+            "label": "genesisAddress",
+            "offset": 0,
+            "slot": "3",
+            "type": "t_address",
+            "contract": "ARVOMatrix",
+            "src": "contracts/core/ARVOMatrix.sol:48"
+          },
+          {
+            "label": "skipAdmin1",
+            "offset": 0,
+            "slot": "4",
+            "type": "t_address",
+            "contract": "ARVOMatrix",
+            "src": "contracts/core/ARVOMatrix.sol:49"
+          },
+          {
+            "label": "skipAdmin2",
+            "offset": 0,
+            "slot": "5",
+            "type": "t_address",
+            "contract": "ARVOMatrix",
+            "src": "contracts/core/ARVOMatrix.sol:51"
+          },
+          {
+            "label": "users",
+            "offset": 0,
+            "slot": "6",
+            "type": "t_mapping(t_address,t_struct(User)3081_storage)",
+            "contract": "ARVOMatrix",
+            "src": "contracts/core/ARVOMatrix.sol:97"
+          },
+          {
+            "label": "totalMembers",
+            "offset": 0,
+            "slot": "7",
+            "type": "t_uint256",
+            "contract": "ARVOMatrix",
+            "src": "contracts/core/ARVOMatrix.sol:99"
+          },
+          {
+            "label": "migrationClosed",
+            "offset": 0,
+            "slot": "8",
+            "type": "t_bool",
+            "contract": "ARVOMatrix",
+            "src": "contracts/core/ARVOMatrix.sol:99"
+          },
+          {
+            "label": "_queue",
+            "offset": 0,
+            "slot": "9",
+            "type": "t_array(t_address)dyn_storage",
+            "contract": "ARVOMatrix",
+            "src": "contracts/core/ARVOMatrix.sol:102"
+          },
+          {
+            "label": "_queueHead",
+            "offset": 0,
+            "slot": "10",
+            "type": "t_uint256",
+            "contract": "ARVOMatrix",
+            "src": "contracts/core/ARVOMatrix.sol:103"
+          },
+          {
+            "label": "_subtreeQueue",
+            "offset": 0,
+            "slot": "11",
+            "type": "t_mapping(t_address,t_array(t_address)dyn_storage)",
+            "contract": "ARVOMatrix",
+            "src": "contracts/core/ARVOMatrix.sol:103"
+          },
+          {
+            "label": "_subtreeQueueHead",
+            "offset": 0,
+            "slot": "12",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "ARVOMatrix",
+            "src": "contracts/core/ARVOMatrix.sol:104"
+          },
+          {
+            "label": "_directReferrals",
+            "offset": 0,
+            "slot": "13",
+            "type": "t_mapping(t_address,t_array(t_address)dyn_storage)",
+            "contract": "ARVOMatrix",
+            "src": "contracts/core/ARVOMatrix.sol:111"
+          },
+          {
+            "label": "totalDirectIncome",
+            "offset": 0,
+            "slot": "14",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "ARVOMatrix",
+            "src": "contracts/core/ARVOMatrix.sol:113"
+          },
+          {
+            "label": "totalLevelIncome",
+            "offset": 0,
+            "slot": "15",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "ARVOMatrix",
+            "src": "contracts/core/ARVOMatrix.sol:114"
+          },
+          {
+            "label": "totalSkippedIncome",
+            "offset": 0,
+            "slot": "16",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "ARVOMatrix",
+            "src": "contracts/core/ARVOMatrix.sol:116"
+          },
+          {
+            "label": "totalWithdrawn",
+            "offset": 0,
+            "slot": "17",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "ARVOMatrix",
+            "src": "contracts/core/ARVOMatrix.sol:119"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_struct(InitializableStorage)581_storage": {
+            "label": "struct Initializable.InitializableStorage",
+            "members": [
+              {
+                "label": "_initialized",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_initializing",
+                "type": "t_bool",
+                "offset": 8,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(OwnableStorage)151_storage": {
+            "label": "struct OwnableUpgradeable.OwnableStorage",
+            "members": [
+              {
+                "label": "_owner",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(PausableStorage)253_storage": {
+            "label": "struct PausableUpgradeable.PausableStorage",
+            "members": [
+              {
+                "label": "_paused",
+                "type": "t_bool",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_array(t_address)2_storage": {
+            "label": "address[2]",
+            "numberOfBytes": "64"
+          },
+          "t_array(t_address)dyn_storage": {
+            "label": "address[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_uint256)13_storage": {
+            "label": "uint256[13]",
+            "numberOfBytes": "416"
+          },
+          "t_contract(IARVOWeeklyPool)7703": {
+            "label": "contract IARVOWeeklyPool",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IERC20)1831": {
+            "label": "contract IERC20",
+            "numberOfBytes": "20"
+          },
+          "t_mapping(t_address,t_array(t_address)dyn_storage)": {
+            "label": "mapping(address => address[])",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_struct(User)3081_storage)": {
+            "label": "mapping(address => struct ARVOMatrix.User)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_uint256)": {
+            "label": "mapping(address => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_struct(User)3081_storage": {
             "label": "struct ARVOMatrix.User",
             "members": [
               {

@@ -15,8 +15,9 @@ import "../utils/ReentrancyGuardUpgradeableLocal.sol";
 /// @notice Immutable MLM contract. Registrations pay $10 USDT (18 decimals — BSC USDT).
 ///         $5 → direct referrer, $2.5 → matrix auto-upgrade fund, $2 → weekly pool, $0.5 → admins.
 ///         Members become eligible for level earnings after 2 direct referrals.
-///         First 2 eligible sub-member positions per level trigger the next level upgrade.
-///         From 3rd sub-member onward, income is fully withdrawable.
+///         Each eligible sub-member contributes $2.5 toward upgrade funding at every level.
+///         Upgrade costs stay fixed by package level, so required positions grow naturally.
+///         After a level's upgrade cost is fully funded, later income at that level is withdrawable.
 ///         At Level 12 (MAX_LEVEL) all income is claimable immediately — no upgrade to fund.
 ///         Auto-upgrade funds are paid to the nearest qualified upline for the upgraded level.
 ///         Skipped income (from unqualified nodes) is credited to genesis as treasury.
@@ -53,7 +54,7 @@ contract ARVOMatrix is Initializable, ReentrancyGuardUpgradeableLocal, PausableU
         uint256   claimableUsdt;
         // Per-level: how many sub-members have contributed income
         uint256[MAX_LEVEL + 1] levelSubCount;
-        // Per-level: USDT locked for next upgrade (from first 2 sub-members, levels 1-11 only)
+        // Per-level: USDT locked for next upgrade (funded by $2.5 sub-member contributions)
         uint256[MAX_LEVEL + 1] lockedFunds;
     }
 
@@ -567,7 +568,8 @@ contract ARVOMatrix is Initializable, ReentrancyGuardUpgradeableLocal, PausableU
     /// @dev Walk up the tree distributing level income at each level.
     ///
     ///      Per the ARVO Matrix business rules:
-    ///        • Levels 1–11: first 2 sub-members → locked for auto-upgrade; 3rd+ → claimable.
+    ///        • Levels 1–11: $2.5 sub-member contributions are locked until the upgrade
+    ///          cost for that level is fully funded; later positions are claimable.
     ///        • Level 12 (MAX_LEVEL): all sub-members → claimable (no further upgrade to fund).
     ///        • Beneficiary must have currentLevel >= level to earn; otherwise income is
     ///          credited to genesis treasury and propagation continues upward.
@@ -592,16 +594,17 @@ contract ARVOMatrix is Initializable, ReentrancyGuardUpgradeableLocal, PausableU
 
         b.levelSubCount[level]++;
 
-        // At levels 1–11: first 2 sub-members fund the next-level upgrade.
+        // At levels 1–11: $2.5 contributions fund the next-level upgrade until
+        // the configured package cost is reached.
         // At level 12 there is no next level, so all positions are immediately claimable.
-        bool shouldLock = (b.levelSubCount[level] <= 2) && (level < MAX_LEVEL);
+        uint256 needed = LevelConfig.upgradeCost(level);
+        bool shouldLock = (level < MAX_LEVEL) && (b.lockedFunds[level] < needed);
 
         if (shouldLock) {
             b.lockedFunds[level] += income;
             totalLevelIncome[beneficiary] += income;
             emit LevelIncomePaid(beneficiary, from, level, income, false);
 
-            uint256 needed = LevelConfig.upgradeCost(level);
             if (b.lockedFunds[level] >= needed) {
                 _autoUpgrade(beneficiary, level);
             }

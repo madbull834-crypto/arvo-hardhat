@@ -491,6 +491,32 @@ describe("ARVOMatrix", function () {
       expect(stats.locked).to.equal(0n);
     });
 
+    it("funds higher upgrades with constant $2.5 contributions per sub-member", async function () {
+      await matrix.connect(users[0]).register(genesis.address);
+
+      // Two direct sub-members fund users[0]'s L1 -> L2 upgrade: 2 * $2.5 = $5.
+      await matrix.connect(users[1]).register(users[0].address);
+      await matrix.connect(users[2]).register(users[0].address);
+      expect((await matrix.getUserInfo(users[0].address)).currentLevel).to.equal(2);
+
+      // Level 2 -> Level 3 costs $10, so it needs four $2.5 level-2 contributions.
+      await matrix.connect(users[3]).register(users[1].address);
+      await matrix.connect(users[4]).register(users[1].address);
+      await matrix.connect(users[5]).register(users[2].address);
+
+      let stats = await matrix.getLevelStats(users[0].address, 2);
+      expect(stats.locked).to.equal(ethers.parseUnits("7.5", 18));
+      expect((await matrix.getUserInfo(users[0].address)).currentLevel).to.equal(2);
+
+      await expect(matrix.connect(users[6]).register(users[2].address))
+        .to.emit(matrix, "UpgradeFundPaid")
+        .withArgs(users[0].address, genesis.address, 3, ethers.parseUnits("10", 18));
+
+      stats = await matrix.getLevelStats(users[0].address, 2);
+      expect(stats.locked).to.equal(0n);
+      expect((await matrix.getUserInfo(users[0].address)).currentLevel).to.equal(3);
+    });
+
     it("does not credit skipped income to the skipped member", async function () {
       await matrix.connect(users[0]).register(genesis.address);
 

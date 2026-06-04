@@ -24,20 +24,11 @@ library LevelConfig {
         return 0; // Level 12 — no further upgrade
     }
 
-    /// @notice USDT income earned per qualifying sub-member at a given matrix level (18 decimals)
+    /// @notice USDT contributed by each qualifying sub-member at every matrix level (18 decimals)
+    /// @dev Upgrade costs increase by level, but each contributing user always adds $2.5.
+    ///      Required positions therefore grow naturally: $5/2.5=2, $10/2.5=4, $20/2.5=8, etc.
     function incomePerMember(uint8 level) internal pure returns (uint256) {
-        if (level == 1)  return 25e17;       // $2.5 USDT
-        if (level == 2)  return 5e18;
-        if (level == 3)  return 10e18;
-        if (level == 4)  return 20e18;
-        if (level == 5)  return 40e18;
-        if (level == 6)  return 80e18;
-        if (level == 7)  return 160e18;
-        if (level == 8)  return 320e18;
-        if (level == 9)  return 640e18;
-        if (level == 10) return 1_280e18;
-        if (level == 11) return 2_560e18;
-        if (level == 12) return 5_120e18;
+        if (level >= 1 && level <= MAX_LEVEL) return 25e17; // $2.5 USDT
         return 0;
     }
 
