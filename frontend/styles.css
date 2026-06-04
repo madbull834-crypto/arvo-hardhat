@@ -379,14 +379,14 @@ a {
 
 .packages {
   display: grid;
-  grid-template-columns: repeat(10, minmax(92px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
   gap: 10px;
 }
 
 .package-card {
   min-height: 130px;
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: 6px;
   background: #ffffff;
   display: grid;
   justify-items: center;
@@ -396,9 +396,29 @@ a {
   text-align: center;
 }
 
-.package-card.owned {
+.package-card.unlocked {
+  border-color: #00a889;
+  background: #eafaf6;
+  box-shadow: inset 0 0 0 2px rgba(0, 168, 137, .28);
+}
+
+.package-card.current {
+  border-color: #086ad7;
   background: #edf5ff;
-  box-shadow: inset 0 0 0 3px rgba(0, 186, 163, .22);
+  box-shadow: inset 0 0 0 3px rgba(8, 106, 215, .3), 0 10px 24px rgba(8, 106, 215, .16);
+}
+
+.package-card.locked {
+  color: #637083;
+  background: #f8fafc;
+}
+
+.package-card.locked .rank-pill {
+  background: #637083;
+}
+
+.package-card.current .rank-pill {
+  background: #086ad7;
 }
 
 .rank-pill {
@@ -525,21 +545,66 @@ td {
   min-height: 50px;
 }
 
+.level-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 78px;
+  min-height: 28px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.level-badge.unlocked {
+  color: #006f5b;
+  background: #eafaf6;
+  border: 1px solid rgba(0, 168, 137, .4);
+}
+
+.level-badge.locked {
+  color: #637083;
+  background: #f1f5f9;
+  border: 1px solid rgba(99, 112, 131, .24);
+}
+
 .pager {
   display: flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 10px;
   margin: 18px 0 32px;
   justify-content: flex-start;
 }
 
 .pager button {
-  width: 42px;
-  height: 42px;
+  min-width: 82px;
+  min-height: 38px;
+  padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #ffffff;
   color: #086ad7;
   font-weight: 800;
+}
+
+.level-sequence button.current {
+  border-color: #086ad7;
+  background: #edf5ff;
+  color: #086ad7;
+  box-shadow: inset 0 0 0 2px rgba(8, 106, 215, .22);
+}
+
+.level-sequence button.unlocked {
+  border-color: rgba(0, 168, 137, .45);
+  background: #eafaf6;
+  color: #006f5b;
+}
+
+.level-sequence button.locked {
+  border-color: rgba(99, 112, 131, .24);
+  background: #f8fafc;
+  color: #637083;
 }
 
 .community-tool {

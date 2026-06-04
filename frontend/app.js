@@ -83,18 +83,18 @@ const tabs = [
 const ranks = Array.from({ length: MAX_LEVEL }, (_, index) => `Level ${index + 1}`);
 
 const packages = [
-  ["11 USDT", "Level 1"],
-  ["22 USDT", "Level 2"],
-  ["43 USDT", "Level 3"],
-  ["84 USDT", "Level 4"],
-  ["165 USDT", "Level 5"],
-  ["326 USDT", "Level 6"],
-  ["647 USDT", "Level 7"],
-  ["1288 USDT", "Level 8"],
-  ["2569 USDT", "Level 9"],
-  ["5130 USDT", "Level 10"],
-  ["10260 USDT", "Level 11"],
-  ["20520 USDT", "Level 12"]
+  ["5 USDT", "Level 1"],
+  ["10 USDT", "Level 2"],
+  ["20 USDT", "Level 3"],
+  ["40 USDT", "Level 4"],
+  ["80 USDT", "Level 5"],
+  ["160 USDT", "Level 6"],
+  ["320 USDT", "Level 7"],
+  ["640 USDT", "Level 8"],
+  ["1280 USDT", "Level 9"],
+  ["2560 USDT", "Level 10"],
+  ["5120 USDT", "Level 11"],
+  ["Max Level", "Level 12"]
 ];
 
 const app = document.querySelector("#app");
@@ -147,6 +147,13 @@ function formatNative(value) {
 function rankName(level) {
   const index = Math.max(0, Math.min(ranks.length - 1, Number(level || 1) - 1));
   return ranks[index];
+}
+
+function levelBadge(level) {
+  const numericLevel = Number(level || 0);
+  const currentLevel = Number(state.data?.user?.currentLevel || 0);
+  const statusClass = numericLevel > 0 && numericLevel <= currentLevel ? "unlocked" : "locked";
+  return `<span class="level-badge ${statusClass}">${rankName(numericLevel)}</span>`;
 }
 
 function setStatus(message, type = "info") {
@@ -337,14 +344,12 @@ async function refresh() {
       state.readOrbd.symbol().catch(() => "ORBD")
     ]);
 
-    const [registeredEvents, directEvents, levelEvents, history, poolStats, oracleState, levelStats, treeMembers, directReferralAddresses, incomeTotals] = await Promise.all([
+    const [registeredEvents, directEvents, history, poolStats, oracleState, treeMembers, directReferralAddresses, incomeTotals] = await Promise.all([
       queryRegistrations(state.account, fromBlock, latest),
       queryDirects(state.account, fromBlock, latest),
-      queryLevelIncome(state.account, fromBlock, latest),
       queryHistory(state.account, fromBlock, latest),
       queryPoolStats(state.account),
       queryOracleState(),
-      queryLevelStats(state.account),
       queryTeamFromContract(state.account),
       state.readMatrix.getDirectReferrals(state.account).catch(() => []),
       state.readMatrix.getIncomeTotals(state.account).catch(() => ({
@@ -369,11 +374,9 @@ async function refresh() {
       orbdSymbol,
       registeredEvents,
       directEvents,
-      levelEvents,
       history,
       poolStats,
       oracleState,
-      levelStats,
       treeMembers,
       directReferralAddresses,
       incomeTotals
@@ -404,18 +407,12 @@ async function queryDirects(account, fromBlock, latest) {
   return all.filter((event) => sameAddress(event.args.referrer, account));
 }
 
-async function queryLevelIncome(account, fromBlock, latest) {
-  const all = await safeQueryFilter(state.readMatrix.filters.LevelIncomePaid(), fromBlock, latest);
-  return all.filter((event) => sameAddress(event.args.beneficiary, account));
-}
-
 async function queryHistory(account, fromBlock, latest) {
-  const [direct, level, withdrawals] = await Promise.all([
+  const [direct, withdrawals] = await Promise.all([
     queryDirects(account, fromBlock, latest),
-    queryLevelIncome(account, fromBlock, latest),
     safeQueryFilter(state.readMatrix.filters.Withdrawal(), fromBlock, latest)
   ]);
-  return [...direct, ...level, ...withdrawals.filter((event) => sameAddress(event.args.user, account))]
+  return [...direct, ...withdrawals.filter((event) => sameAddress(event.args.user, account))]
     .sort((a, b) => Number(b.blockNumber) - Number(a.blockNumber))
     .slice(0, 10);
 }
@@ -481,22 +478,6 @@ async function queryExplorerLogs(filter, fromBlock, latest) {
   } catch {
     return null;
   }
-}
-
-// Query all 12 levels
-async function queryLevelStats(account) {
-  const stats = await Promise.all(
-    Array.from({ length: MAX_LEVEL }, async (_, index) => {
-      const level = index + 1;
-      try {
-        const result = await state.readMatrix.getLevelStats(account, level);
-        return { level, subCount: result.subCount, locked: result.locked };
-      } catch {
-        return { level, subCount: 0, locked: 0n };
-      }
-    })
-  );
-  return stats;
 }
 
 async function queryTreeMembers(root) {
@@ -778,9 +759,7 @@ function dashboard() {
   const eventDirectIncome  = data.directEvents.reduce((sum, item) => sum + item.args.amount, 0n);
   const countDirectIncome  = BigInt(user.directCount || 0) * DIRECT_REFERRAL_AMOUNT;
   const directIncome       = data.incomeTotals.directIncome || (eventDirectIncome > countDirectIncome ? eventDirectIncome : countDirectIncome);
-  const eventMatrixIncome  = data.levelEvents.reduce((sum, item) => sum + item.args.amount, 0n);
-  const matrixIncome       = data.incomeTotals.levelIncome || eventMatrixIncome;
-  const totalIncome        = directIncome + matrixIncome + user.claimableUsdt;
+  const totalIncome        = directIncome + user.claimableUsdt;
 
   // ORBD earnings from pool stats
   const totalOrbdReceived  = data.poolStats
@@ -793,20 +772,6 @@ function dashboard() {
     : oracle.enabled
       ? oracle.ready ? "Ready" : "Waiting for TWAP"
       : "Disabled";
-
-  const rankRows = ranks.map((rank, i) => {
-    const level = i + 1;
-    const stat = data.levelStats[i] || { subCount: 0, locked: 0n };
-    const earned = data.levelEvents
-      .filter((event) => Number(event.args.level) === level)
-      .reduce((sum, item) => sum + item.args.amount, 0n);
-    return `
-    <div class="rank-row">
-      <div>${rank} <span>${Number(stat.subCount)} sub</span></div>
-      <div>${formatUsdt(earned)} USDT earned / ${formatUsdt(stat.locked)} locked</div>
-    </div>
-  `;
-  }).join("");
 
   // Pool stats rows — all 11 pools
   const poolRows = data.poolStats.filter(Boolean).map(({ index, member, pool }) => `
@@ -853,31 +818,30 @@ function dashboard() {
     </section>
     <div class="section-label">Packages (Level Progress)</div>
     <section class="packages">${packages.map(([price, rank], i) => {
-      const owned = Number(user.currentLevel) > i;
+      const level = i + 1;
+      const unlocked = Number(user.currentLevel) >= level;
+      const current = Number(user.currentLevel) === level;
       return `
-      <article class="package-card ${owned ? "owned" : ""}">
+      <article class="package-card ${unlocked ? "unlocked" : "locked"} ${current ? "current" : ""}">
         <div>${price}</div>
         <div class="rank-pill">${rank}</div>
         <div class="coin-mark">USDT</div>
-        <button class="tiny-black" disabled>${owned ? "Active" : "Auto"}</button>
+        <button class="tiny-black" disabled>${current ? "Current" : unlocked ? "Unlocked" : "Locked"}</button>
       </article>
     `;
     }).join("")}</section>
     <section class="tile-grid">
       <div class="income-tile"><div class="amount">$ ${formatUsdt(directIncome)}</div><strong>Direct Income</strong></div>
-      <div class="income-tile"><div class="amount">$ ${formatUsdt(matrixIncome)}</div><strong>Matrix Level Income</strong></div>
       <div class="income-tile"><div class="amount">$ ${formatUsdt(user.claimableUsdt)}</div><strong>Withdrawable Income</strong><button class="tiny-black" data-action="withdraw" ${state.busy || user.claimableUsdt === 0n ? "disabled" : ""}>Withdraw</button></div>
       <div class="income-tile"><div class="amount">${formatOrbd(data.orbdBalance)} ORBD</div><strong>ORBD Balance</strong></div>
       <div class="income-tile"><div class="amount">${formatOrbd(totalOrbdReceived)} ORBD</div><strong>Total ORBD Earned</strong></div>
       <div class="income-tile"><div class="amount">${oracleRate}</div><strong>Oracle Rate</strong><span>${oracleStatus}</span></div>
       <div class="income-tile"><div class="amount">$ ${formatUsdt(totalIncome)}</div><strong>Total USDT Income</strong></div>
     </section>
-    <div class="section-label">Level Income (Levels 1–12)</div>
-    <section class="rank-table">${rankRows}</section>
     <div class="section-label">ORBD Pool Rewards (Pools 0–10)</div>
     <section class="rank-table">${poolRows || '<div class="rank-row"><div>No pool memberships yet</div><div>-</div></div>'}</section>
     <div class="section-label">Recent History</div>
-    <section class="history">${dashboardHistoryRows(data, directIncome, matrixIncome)}</section>
+    <section class="history">${dashboardHistoryRows(data, directIncome)}</section>
     <div class="section-label">Referral Earnings</div>
     <section class="history">${referralRows}</section>
     <footer class="footer-addresses">
@@ -920,7 +884,7 @@ function directReferralAddresses(data) {
   ])].map((address) => ethers.getAddress(address));
 }
 
-function dashboardHistoryRows(data, directIncome, matrixIncome) {
+function dashboardHistoryRows(data, directIncome) {
   const eventRows = historyRows(data.history);
   if (data.history.length) return eventRows;
 
@@ -931,16 +895,6 @@ function dashboardHistoryRows(data, directIncome, matrixIncome) {
         <div>Direct</div>
         <div>${formatUsdt(directIncome)} USDT</div>
         <div>Total direct income from contract storage</div>
-        <div>On-chain</div>
-      </div>
-    `);
-  }
-  if (matrixIncome > 0n) {
-    rows.push(`
-      <div class="history-row">
-        <div>Matrix</div>
-        <div>${formatUsdt(matrixIncome)} USDT</div>
-        <div>Total matrix income from contract storage</div>
         <div>On-chain</div>
       </div>
     `);
@@ -1011,8 +965,19 @@ function referralEarningRows(data) {
 }
 
 function tablePage(title, rows, columns) {
+  const currentLevel = Number(state.data?.user?.currentLevel || 0);
+  const levelButtons = Array.from({ length: MAX_LEVEL }, (_, i) => {
+    const level = i + 1;
+    const statusClass = level === currentLevel
+      ? "current"
+      : level < currentLevel
+        ? "unlocked"
+        : "locked";
+    return `<button class="${statusClass}" disabled>Level ${level}</button>`;
+  }).join("");
+
   return `
-    <div class="pager">${Array.from({ length: 10 }, (_, i) => `<button ${i > 0 ? "disabled" : ""}>${i + 1}</button>`).join("")}</div>
+    <div class="pager level-sequence">${levelButtons}</div>
     <section class="data-panel">
       <h2>${title}</h2>
       <div class="table-wrap">
@@ -1037,10 +1002,12 @@ function directs() {
   const eventAddresses  = new Set(events.map((event) => String(event.args.user).toLowerCase()));
   const rowsFromEvents = events.map((event, index) => {
     const paid = state.data.directEvents.find((direct) => sameAddress(direct.args.from, event.args.user));
+    const member = directMembers.find((item) => sameAddress(item.address, event.args.user));
     return `
     <tr>
       <td>${index + 1}</td>
       <td><a href="${explorerAddress(event.args.user)}" target="_blank" rel="noreferrer">${shortAddress(event.args.user)}</a></td>
+      <td>${member ? levelBadge(member.info.currentLevel) : "-"}</td>
       <td>Block #${event.blockNumber}</td>
       <td>${paid ? `${formatUsdt(paid.args.amount)} USDT` : "Registered"}</td>
     </tr>
@@ -1054,13 +1021,14 @@ function directs() {
       <tr>
         <td>${rowsFromEvents.length + index + 1}</td>
         <td><a href="${explorerAddress(address)}" target="_blank" rel="noreferrer">${shortAddress(address)}</a></td>
+        <td>${member ? levelBadge(member.info.currentLevel) : "-"}</td>
         <td>${member ? `Tree level ${member.depth}` : "Contract storage"}</td>
         <td>${formatUsdt(DIRECT_REFERRAL_AMOUNT)} USDT</td>
       </tr>
     `;
     });
-  const rows = [...rowsFromEvents, ...rowsFromStorage].join("") || `<tr><td colspan="4">No direct referral records found. Contract direct count: ${state.data.user.directCount.toString()}</td></tr>`;
-  return tablePage("Direct Team", rows, ["Sr. No.", "User", "Join Block", "Direct Income"]);
+  const rows = [...rowsFromEvents, ...rowsFromStorage].join("") || `<tr><td colspan="5">No direct referral records found. Contract direct count: ${state.data.user.directCount.toString()}</td></tr>`;
+  return tablePage("Direct Team", rows, ["Sr. No.", "User", "Level", "Join Block", "Direct Income"]);
 }
 
 function myTeam() {
@@ -1072,7 +1040,7 @@ function myTeam() {
       <td><a href="${explorerAddress(member.address)}" target="_blank" rel="noreferrer">${member.address}</a></td>
       <td>${shortAddress(member.info.referrer)}</td>
       <td>Level ${member.depth} / ${member.side}</td>
-      <td>${rankName(member.info.currentLevel)}</td>
+      <td>${levelBadge(member.info.currentLevel)}</td>
       <td>${member.info.directCount.toString()}</td>
     </tr>
   `).join("") || `<tr><td colspan="7">No team records yet</td></tr>`;
@@ -1088,7 +1056,7 @@ function community() {
       <td>${shortAddress(member.parent)}</td>
       <td>${member.side}</td>
       <td>${member.depth}</td>
-      <td>${rankName(member.info.currentLevel)}</td>
+      <td>${levelBadge(member.info.currentLevel)}</td>
       <td>${formatUsdt(member.info.claimableUsdt)} USDT</td>
     </tr>
   `).join("") || `<tr><td colspan="7">No community members found under this wallet</td></tr>`;
