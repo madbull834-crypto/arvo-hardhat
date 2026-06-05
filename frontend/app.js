@@ -63,12 +63,16 @@ const state = {
   readPool: null,
   readOrbd: null,
   tab: "dashboard",
+  selectedDownlineLevel: 0,
   status: "",
   statusType: "info",
   busy: false,
   loading: false,
   data: null,
   treeRoot: "",
+  previewTree: null,
+  previewRootInfo: null,
+  previewMembers: [],
   initialized: false
 };
 
@@ -111,6 +115,34 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+async function copyText(value) {
+  const text = String(value || "");
+  if (!text) throw new Error("Nothing to copy.");
+
+  if (navigator.clipboard?.writeText && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const input = document.createElement("textarea");
+  input.value = text;
+  input.setAttribute("readonly", "");
+  input.style.position = "fixed";
+  input.style.left = "-9999px";
+  input.style.top = "0";
+  document.body.appendChild(input);
+  input.focus();
+  input.select();
+
+  try {
+    if (!document.execCommand("copy")) {
+      throw new Error("Copy command failed.");
+    }
+  } finally {
+    document.body.removeChild(input);
+  }
 }
 
 function shortAddress(value) {
@@ -280,6 +312,9 @@ async function connect({ silent = false } = {}) {
     state.usdt     = new ethers.Contract(CONFIG.contracts.usdt,        USDT_ABI,   state.signer);
     state.pool     = new ethers.Contract(CONFIG.contracts.weeklyPool,  POOL_ABI,   state.signer);
     state.treeRoot = state.account;
+    state.previewTree = null;
+    state.previewRootInfo = null;
+    state.previewMembers = [];
     localStorage.setItem(SESSION_KEY, "1");
 
     try {
@@ -303,6 +338,10 @@ function disconnect() {
   state.usdt    = null;
   state.pool    = null;
   state.data    = null;
+  state.treeRoot = "";
+  state.previewTree = null;
+  state.previewRootInfo = null;
+  state.previewMembers = [];
   state.status  = "";
   render();
 }
@@ -484,8 +523,8 @@ async function queryTreeMembers(root) {
   const members = [];
   const queue = [{ address: root, parent: ZERO, side: "-", depth: 0 }];
   const seen = new Set([root.toLowerCase()]);
-  const maxMembers = 120;
-  const maxDepth = 8;
+  const maxMembers = 200;
+  const maxDepth = 20;
 
   while (queue.length && members.length < maxMembers) {
     const current = queue.shift();
@@ -522,7 +561,7 @@ async function queryTreeMembers(root) {
 
 async function queryTeamFromContract(root) {
   try {
-    const addresses = await state.readMatrix.getTeamAddresses(root, 8, 120);
+    const addresses = await state.readMatrix.getTeamAddresses(root, 20, 200);
     if (!addresses.length) return queryTreeMembers(root);
 
     const members = await Promise.all(addresses.map(async (address) => {
@@ -567,7 +606,7 @@ function annotateTreeMembers(root, members) {
 
     for (const child of children) {
       const parentTree = current.address === root
-        ? state.data?.tree
+        ? sameAddress(root, state.account) ? state.data?.tree : state.previewTree
         : byAddress.get(current.address.toLowerCase())?.tree;
       child.depth = current.depth + 1;
       child.side = parentTree && sameAddress(parentTree.leftChild, child.address) ? "Left" : "Right";
@@ -796,7 +835,7 @@ function dashboard() {
         <div class="profile-list">
           <div>User id : ${shortAddress(state.account)}</div>
           <div>Sponsor ID : ${shortAddress(user.referrer)}</div>
-          <div>Address : <a href="${explorerAddress(state.account)}" target="_blank" rel="noreferrer">${shortAddress(state.account)}</a> <button class="tiny-black" data-copy="${state.account}">Copy</button></div>
+          <div>Address : <a href="${explorerAddress(state.account)}" target="_blank" rel="noreferrer">${shortAddress(state.account)}</a> <button class="tiny-black" data-copy="${escapeHtml(state.account)}">Copy</button></div>
           <div>Rank : ${rankName(user.currentLevel)}</div>
           <div>Level : ${Number(user.currentLevel)} / ${MAX_LEVEL}</div>
           <div>Total Members : ${data.totalMembers.toString()}</div>
@@ -811,7 +850,7 @@ function dashboard() {
         <strong>Referral Link</strong>
         <div class="copy-row">
           <input readonly value="${escapeHtml(ref)}">
-          <button data-copy="${ref}">Copy</button>
+          <button data-copy="${escapeHtml(ref)}">Copy</button>
         </div>
       </div>
     </section>
@@ -845,10 +884,10 @@ function dashboard() {
     <section class="history">${referralRows}</section>
     <footer class="footer-addresses">
       <div>Arvo Address Link</div>
-      <div class="address-chip">Contract Address : ${shortAddress(CONFIG.contracts.matrix)} <button class="tiny-black" data-copy="${CONFIG.contracts.matrix}">Copy</button></div>
-      <div class="address-chip">USDT Address : ${shortAddress(CONFIG.contracts.usdt)} <button class="tiny-black" data-copy="${CONFIG.contracts.usdt}">Copy</button></div>
-      <div class="address-chip">ORBD Address : ${shortAddress(CONFIG.contracts.orbd)} <button class="tiny-black" data-copy="${CONFIG.contracts.orbd}">Copy</button></div>
-      ${CONFIG.contracts.oraclePair ? `<div class="address-chip">Oracle Pair : ${shortAddress(CONFIG.contracts.oraclePair)} <button class="tiny-black" data-copy="${CONFIG.contracts.oraclePair}">Copy</button></div>` : ""}
+      <div class="address-chip">Contract Address : ${shortAddress(CONFIG.contracts.matrix)} <button class="tiny-black" data-copy="${escapeHtml(CONFIG.contracts.matrix)}">Copy</button></div>
+      <div class="address-chip">USDT Address : ${shortAddress(CONFIG.contracts.usdt)} <button class="tiny-black" data-copy="${escapeHtml(CONFIG.contracts.usdt)}">Copy</button></div>
+      <div class="address-chip">ORBD Address : ${shortAddress(CONFIG.contracts.orbd)} <button class="tiny-black" data-copy="${escapeHtml(CONFIG.contracts.orbd)}">Copy</button></div>
+      ${CONFIG.contracts.oraclePair ? `<div class="address-chip">Oracle Pair : ${shortAddress(CONFIG.contracts.oraclePair)} <button class="tiny-black" data-copy="${escapeHtml(CONFIG.contracts.oraclePair)}">Copy</button></div>` : ""}
     </footer>
   `;
 }
@@ -963,22 +1002,36 @@ function referralEarningRows(data) {
     `<div class="history-row"><div>-</div><div>-</div><div>No direct referrals found on-chain</div><div>-</div></div>`;
 }
 
-function tablePage(title, rows, columns) {
-  const currentLevel = Number(state.data?.user?.currentLevel || 0);
+function downlineLevelFilter() {
+  return Number(state.selectedDownlineLevel || 0);
+}
+
+function filterByDownlineLevel(members) {
+  const selectedLevel = downlineLevelFilter();
+  if (!selectedLevel) return members;
+  return members.filter((member) => Number(member.depth) === selectedLevel);
+}
+
+function tablePage(title, rows, columns, options = {}) {
+  const selectedLevel = downlineLevelFilter();
+  const showAllButton = options.showAllButton !== false;
   const levelButtons = Array.from({ length: MAX_LEVEL }, (_, i) => {
     const level = i + 1;
-    const statusClass = level === currentLevel
-      ? "current"
-      : level < currentLevel
-        ? "unlocked"
-        : "locked";
-    return `<button class="${statusClass}" disabled>Level ${level}</button>`;
+    const statusClass = level === selectedLevel ? "current" : "unlocked";
+    return `<button class="${statusClass}" data-downline-level="${level}">Level ${level}</button>`;
   }).join("");
+  const allButton = showAllButton
+    ? `<button class="${selectedLevel ? "unlocked" : "current"}" data-downline-level="0">All</button>`
+    : "";
+  const subtitle = selectedLevel
+    ? `<div class="table-filter-note">Showing downline Level ${selectedLevel}</div>`
+    : "";
 
   return `
-    <div class="pager level-sequence">${levelButtons}</div>
+    <div class="pager level-sequence">${allButton}${levelButtons}</div>
     <section class="data-panel">
       <h2>${title}</h2>
+      ${subtitle}
       <div class="table-wrap">
         <table>
           <thead><tr>${columns.map((c) => `<th>${c}</th>`).join("")}</tr></thead>
@@ -990,6 +1043,23 @@ function tablePage(title, rows, columns) {
 }
 
 function directs() {
+  const selectedLevel = downlineLevelFilter();
+  if (selectedLevel) {
+    const members = filterByDownlineLevel(
+      state.data.treeMembers.filter((member) => !sameAddress(member.address, state.account))
+    );
+    const rows = members.map((member, index) => `
+      <tr>
+        <td>${index + 1}</td>
+        <td><a href="${explorerAddress(member.address)}" target="_blank" rel="noreferrer">${shortAddress(member.address)}</a></td>
+        <td>${levelBadge(member.info.currentLevel)}</td>
+        <td>Level ${member.depth} / ${member.side}</td>
+        <td>${sameAddress(member.info.referrer, state.account) ? `${formatUsdt(DIRECT_REFERRAL_AMOUNT)} USDT` : "Downline wallet"}</td>
+      </tr>
+    `).join("") || `<tr><td colspan="5">No wallets found at downline Level ${selectedLevel}</td></tr>`;
+    return tablePage("Direct Team", rows, ["Sr. No.", "User", "Level", "Placement", "Direct Income"]);
+  }
+
   const events = state.data.registeredEvents.asReferrer;
   const directMembers = state.data.treeMembers
     .filter((member) => !sameAddress(member.address, state.account) && sameAddress(member.info.referrer, state.account));
@@ -1031,7 +1101,10 @@ function directs() {
 }
 
 function myTeam() {
-  const members = state.data.treeMembers.filter((member) => !sameAddress(member.address, state.account));
+  const selectedLevel = downlineLevelFilter();
+  const members = filterByDownlineLevel(
+    state.data.treeMembers.filter((member) => !sameAddress(member.address, state.account))
+  );
   const rows = members.map((member, index) => `
     <tr>
       <td>${index + 1}</td>
@@ -1042,12 +1115,15 @@ function myTeam() {
       <td>${levelBadge(member.info.currentLevel)}</td>
       <td>${member.info.directCount.toString()}</td>
     </tr>
-  `).join("") || `<tr><td colspan="7">No team records yet</td></tr>`;
+  `).join("") || `<tr><td colspan="7">${selectedLevel ? `No team records found at downline Level ${selectedLevel}` : "No team records yet"}</td></tr>`;
   return tablePage("My Team", rows, ["SNo.", "ID", "Address", "Sponsor ID", "Placement", "Rank", "Direct Team"]);
 }
 
 function community() {
-  const members = state.data.treeMembers.filter((member) => !sameAddress(member.address, state.account));
+  const selectedLevel = downlineLevelFilter();
+  const members = filterByDownlineLevel(
+    state.data.treeMembers.filter((member) => !sameAddress(member.address, state.account))
+  );
   const rows = members.map((member, index) => `
     <tr>
       <td>${index + 1}</td>
@@ -1058,7 +1134,7 @@ function community() {
       <td>${levelBadge(member.info.currentLevel)}</td>
       <td>${formatUsdt(member.info.claimableUsdt)} USDT</td>
     </tr>
-  `).join("") || `<tr><td colspan="7">No community members found under this wallet</td></tr>`;
+  `).join("") || `<tr><td colspan="7">${selectedLevel ? `No community members found at downline Level ${selectedLevel}` : "No community members found under this wallet"}</td></tr>`;
   return tablePage("Community Info", rows, ["SNo.", "Member", "Parent", "Side", "Depth", "Rank", "Claimable"]);
 }
 
@@ -1067,16 +1143,29 @@ function tree() {
 }
 
 function treeView(title, showSearch) {
-  const root  = state.treeRoot || state.account;
-  const tree  = root === state.account ? state.data.tree : state.previewTree || state.data.tree;
-  const left  = tree.leftChild  !== ZERO ? tree.leftChild  : "";
-  const right = tree.rightChild !== ZERO ? tree.rightChild : "";
-  const memberByAddress = new Map((state.data.treeMembers || []).map((member) => [member.address.toLowerCase(), member]));
-  const rootInfo  = sameAddress(root, state.account)
+  const root = state.treeRoot || state.account;
+  const isOwnRoot = sameAddress(root, state.account);
+  const members = isOwnRoot ? state.data.treeMembers || [] : state.previewMembers || [];
+  const memberByAddress = new Map(members.map((member) => [member.address.toLowerCase(), member]));
+  const rootInfo = isOwnRoot
     ? state.data.user
-    : memberByAddress.get(root.toLowerCase())?.info;
-  const leftInfo  = left  ? memberByAddress.get(left.toLowerCase())?.info  : null;
-  const rightInfo = right ? memberByAddress.get(right.toLowerCase())?.info : null;
+    : state.previewRootInfo || memberByAddress.get(root.toLowerCase())?.info;
+  const childrenByParent = new Map();
+
+  for (const member of members) {
+    const parentKey = String(member.parent || ZERO).toLowerCase();
+    if (!childrenByParent.has(parentKey)) childrenByParent.set(parentKey, []);
+    childrenByParent.get(parentKey).push(member);
+  }
+
+  for (const children of childrenByParent.values()) {
+    children.sort((a, b) => {
+      if (a.side === b.side) return a.address.localeCompare(b.address);
+      if (a.side === "Left") return -1;
+      if (b.side === "Left") return 1;
+      return 0;
+    });
+  }
 
   const treeNode = (address, info, label, actionLabel, actionAddress = address) => {
     const empty   = !address;
@@ -1098,26 +1187,48 @@ function treeView(title, showSearch) {
     `;
   };
 
+  const renderBranch = (address, info, label, actionLabel, actionAddress = address) => {
+    const children = childrenByParent.get(address.toLowerCase()) || [];
+    return `
+      <li>
+        ${treeNode(address, info, label, actionLabel, actionAddress)}
+        ${children.length ? `
+          <ul>
+            ${children.map((child) => renderBranch(
+              child.address,
+              child.info,
+              `Level ${child.depth} / ${child.side}`,
+              "Focus"
+            )).join("")}
+          </ul>
+        ` : ""}
+      </li>
+    `;
+  };
+
+  const totalShown = members.length + (rootInfo?.isRegistered ? 1 : 0);
+  const treeMarkup = rootInfo?.isRegistered
+    ? `<ul class="tree-list">${renderBranch(
+        root,
+        rootInfo,
+        isOwnRoot ? "Your Wallet" : "Selected Wallet",
+        isOwnRoot ? "You are here" : "Back to My Wallet",
+        isOwnRoot ? root : state.account
+      )}</ul>`
+    : `<div class="tree-empty">No registered member found for this wallet.</div>`;
+
   return `
     <section class="community-tool">
       <div class="tree-header">
         <div>
-          <p>This shows one wallet, then the two people directly placed below it.</p>
+          <p>This shows the selected wallet and every downline member loaded below it.</p>
           <h1>${title}</h1>
+          <span class="tree-count">${totalShown} wallet${totalShown === 1 ? "" : "s"} shown</span>
         </div>
-        ${showSearch ? `<form class="search-row" data-tree-search><input name="address" placeholder="Paste wallet address" value="${root !== state.account ? root : ""}"><button>Show Tree</button></form>` : ""}
+        ${showSearch ? `<form class="search-row" data-tree-search><input name="address" placeholder="Paste wallet address" value="${!isOwnRoot ? root : ""}"><button>Show Tree</button></form>` : ""}
       </div>
       <div class="tree-board">
-        <div class="tree-root">
-          ${treeNode(root, rootInfo, sameAddress(root, state.account) ? "Your Wallet" : "Selected Wallet", sameAddress(root, state.account) ? "You are here" : "Back to My Wallet", sameAddress(root, state.account) ? root : state.account)}
-        </div>
-        <div class="tree-connector" aria-hidden="true">
-          <span></span>
-        </div>
-        <div class="tree-branches">
-          ${treeNode(left, leftInfo, "Left Side", "Show This Wallet")}
-          ${treeNode(right, rightInfo, "Right Side", "Show This Wallet")}
-        </div>
+        ${treeMarkup}
       </div>
     </section>
   `;
@@ -1146,6 +1257,14 @@ app.addEventListener("click", async (event) => {
   const tab = event.target.closest("[data-tab]");
   if (tab) {
     state.tab = tab.dataset.tab;
+    state.selectedDownlineLevel = 0;
+    render();
+    return;
+  }
+
+  const downlineLevel = event.target.closest("[data-downline-level]");
+  if (downlineLevel) {
+    state.selectedDownlineLevel = Number(downlineLevel.dataset.downlineLevel || 0);
     render();
     return;
   }
@@ -1158,8 +1277,12 @@ app.addEventListener("click", async (event) => {
 
   const copy = event.target.closest("[data-copy]");
   if (copy) {
-    await navigator.clipboard.writeText(copy.dataset.copy);
-    setStatus("Copied.", "success");
+    try {
+      await copyText(copy.dataset.copy);
+      setStatus("Copied.", "success");
+    } catch (error) {
+      setStatus("Copy failed. Select the text and copy manually.", "error");
+    }
   }
 
   const treeButton = event.target.closest("[data-tree-address]");
@@ -1192,8 +1315,24 @@ app.addEventListener("submit", async (event) => {
 async function loadTree(address) {
   try {
     if (!ethers.isAddress(address)) throw new Error("Enter a valid wallet address.");
-    state.treeRoot    = ethers.getAddress(address);
-    state.previewTree = await state.readMatrix.getTreeInfo(state.treeRoot);
+    const root = ethers.getAddress(address);
+    state.treeRoot = root;
+
+    if (sameAddress(root, state.account)) {
+      state.previewTree = null;
+      state.previewRootInfo = null;
+      state.previewMembers = [];
+      render();
+      return;
+    }
+
+    const [info, tree] = await Promise.all([
+      state.readMatrix.getUserInfo(root),
+      state.readMatrix.getTreeInfo(root),
+    ]);
+    state.previewRootInfo = info;
+    state.previewTree = tree;
+    state.previewMembers = await queryTeamFromContract(root);
     render();
   } catch (error) {
     setStatus(normalizeError(error), "error");

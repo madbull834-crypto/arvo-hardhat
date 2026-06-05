@@ -16,6 +16,8 @@
     "pm2:start": "pm2 start ecosystem.config.js",
     "pm2:restart": "pm2 restart arvo-frontend",
     "deploy:bscTestnet": "npx hardhat run scripts/deploy_testnet_full.js --network bscTestnet",
+    "deploy:bscMainnet": "npx hardhat run scripts/deploy_bsc_mainnet.js --network bscMainnet",
+    "deploy:bnbMainnet": "npx hardhat run scripts/deploy_bsc_mainnet.js --network bscMainnet",
     "deploy:bnbTestnet": "npx hardhat run scripts/deploy_testnet_full.js --network bscTestnet",
     "deploy:tokens:sepolia": "npx hardhat run scripts/deploy_test_tokens.js --network sepolia",
     "deploy:tokens:bscTestnet": "npx hardhat run scripts/deploy_test_tokens.js --network bscTestnet",

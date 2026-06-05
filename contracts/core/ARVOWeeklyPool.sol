@@ -22,12 +22,28 @@ interface IPancakeV2Pair {
     );
 }
 
+interface IPancakeV2Router {
+    function getAmountsOut(uint256 amountIn, address[] calldata path)
+        external
+        view
+        returns (uint256[] memory amounts);
+
+    function swapExactTokensForTokensSupportingFeeOnTransferTokens(
+        uint256 amountIn,
+        uint256 amountOutMin,
+        address[] calldata path,
+        address to,
+        uint256 deadline
+    ) external;
+}
+
 /// @title ARVOWeeklyPool — 11-pool weighted weekly ORBD distribution
 /// @notice $2 USDT from every registration is split across 11 pools by weight.
-///         Qualified members receive ORBD tokens weekly. Auto-exit on target completion.
+///         In production mode the pool buys ORBD from PancakeSwap and distributes
+///         purchased ORBD weekly to qualified members. Auto-exit on target completion.
 ///         USDT amounts use 18 decimals (BSC USDT).
 /// @dev Pool distribution is triggered by DISTRIBUTOR_ROLE (Chainlink Automation recommended).
-///      This contract holds USDT until weekly distribution; no admin can drain it.
+///      This contract holds purchased ORBD until weekly distribution; no admin can drain it.
 ///      ORBD conversion rate can be sourced from a PancakeSwap V2 ORBD/USDT TWAP.
 contract ARVOWeeklyPool is Initializable, AccessControlUpgradeable, UUPSUpgradeable, ReentrancyGuardUpgradeableLocal {
     using SafeERC20 for IERC20;
@@ -103,6 +119,10 @@ contract ARVOWeeklyPool is Initializable, AccessControlUpgradeable, UUPSUpgradea
     error OracleTooSoon(uint256 nextAllowed);
     error OracleStale(uint256 lastUpdated);
     error RateChangeTooLarge(uint256 oldRate, uint256 newRate, uint256 maxChangeBps);
+    error InvalidRouter();
+    error InvalidSwapPath();
+    error SlippageTooHigh();
+    error SwapFailed();
 
     // ─── Events ───────────────────────────────────────────────────
     event PoolContribution(address indexed member, uint256 totalAmount);
@@ -120,6 +140,18 @@ contract ARVOWeeklyPool is Initializable, AccessControlUpgradeable, UUPSUpgradea
     );
     event PancakeOracleEnabled(bool enabled);
     event PancakeOracleUpdated(uint256 oldRate, uint256 newRate, uint256 elapsed);
+    event PancakeSwapConfigured(address indexed router, uint256 minOutBps, bool enabled);
+    event PancakeSwapEnabled(bool enabled);
+    event OrbdPurchased(uint256 usdtAmount, uint256 orbdReceived);
+
+    // ─── PancakeSwap Buy Configuration ────────────────────────────
+    IPancakeV2Router public pancakeRouter;
+    bool public pancakeSwapEnabled;
+    uint256 public pancakeSwapMinOutBps;
+    address[] public pancakeSwapPath;
+
+    /// @notice Purchased ORBD accumulated per pool for weekly distribution.
+    uint256[POOL_COUNT] public weeklyOrbdAccumulated;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -150,6 +182,7 @@ contract ARVOWeeklyPool is Initializable, AccessControlUpgradeable, UUPSUpgradea
 
         // Default: 1 USDT = 1 ORBD (1:1). Update via setOrbdRate() before launch.
         orbdPerUsdtRate = 1e18;
+        pancakeSwapMinOutBps = 9500;
 
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(RATE_UPDATER_ROLE, msg.sender);
@@ -171,6 +204,10 @@ contract ARVOWeeklyPool is Initializable, AccessControlUpgradeable, UUPSUpgradea
         for (uint8 i = 0; i < POOL_COUNT; i++) {
             uint256 share = (CONTRIBUTION_PER_JOIN * poolWeights[i]) / 10_000;
             weeklyAccumulated[i] += share;
+        }
+
+        if (pancakeSwapEnabled) {
+            _buyOrbdAndAllocate(CONTRIBUTION_PER_JOIN);
         }
 
         totalContributed += CONTRIBUTION_PER_JOIN;
@@ -210,7 +247,7 @@ contract ARVOWeeklyPool is Initializable, AccessControlUpgradeable, UUPSUpgradea
         _enforceFreshOracle();
 
         for (uint8 i = 0; i < POOL_COUNT; i++) {
-            if (weeklyAccumulated[i] > 0) {
+            if (weeklyAccumulated[i] > 0 || weeklyOrbdAccumulated[i] > 0) {
                 _distributePool(i);
             }
             lastPoolDistributionTimestamp[i] = block.timestamp;
@@ -280,6 +317,44 @@ contract ARVOWeeklyPool is Initializable, AccessControlUpgradeable, UUPSUpgradea
     function setPancakeOracleEnabled(bool enabled) external onlyRole(DEFAULT_ADMIN_ROLE) {
         pancakeOracleEnabled = enabled;
         emit PancakeOracleEnabled(enabled);
+    }
+
+    /// @notice Configure PancakeSwap router used to buy ORBD with pool USDT contributions.
+    /// @param router_ PancakeSwap V2 router address.
+    /// @param path_ Swap path, normally [USDT, ORBD] or [USDT, WBNB, ORBD].
+    /// @param minOutBps_ Minimum output as bps of router quote. 9500 = max 5% slippage.
+    /// @param enabled_ Whether buying should be enabled immediately.
+    function configurePancakeSwap(
+        address router_,
+        address[] calldata path_,
+        uint256 minOutBps_,
+        bool enabled_
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (router_ == address(0)) revert InvalidRouter();
+        if (path_.length < 2 || path_[0] != address(usdt) || path_[path_.length - 1] != address(orbd)) {
+            revert InvalidSwapPath();
+        }
+        if (minOutBps_ > 10_000) revert SlippageTooHigh();
+
+        pancakeRouter = IPancakeV2Router(router_);
+        pancakeSwapMinOutBps = minOutBps_;
+        pancakeSwapEnabled = enabled_;
+
+        delete pancakeSwapPath;
+        for (uint256 i = 0; i < path_.length; i++) {
+            pancakeSwapPath.push(path_[i]);
+        }
+
+        emit PancakeSwapConfigured(router_, minOutBps_, enabled_);
+        emit PancakeSwapEnabled(enabled_);
+    }
+
+    function setPancakeSwapEnabled(bool enabled) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (enabled && (address(pancakeRouter) == address(0) || pancakeSwapPath.length < 2)) {
+            revert InvalidRouter();
+        }
+        pancakeSwapEnabled = enabled;
+        emit PancakeSwapEnabled(enabled);
     }
 
     /// @notice Update ORBD/USDT conversion rate from the configured PancakeSwap TWAP.
@@ -376,6 +451,19 @@ contract ARVOWeeklyPool is Initializable, AccessControlUpgradeable, UUPSUpgradea
             poolWeights[poolId],
             poolTargets[poolId],
             _poolMembers[poolId].length
+        );
+    }
+
+    function getPoolTokenStats(uint8 poolId) external view returns (
+        uint256 accumulatedUsdt,
+        uint256 accumulatedOrbd,
+        uint256 orbdBalance
+    ) {
+        if (poolId >= POOL_COUNT) revert InvalidPool(poolId);
+        return (
+            weeklyAccumulated[poolId],
+            weeklyOrbdAccumulated[poolId],
+            IERC20(address(orbd)).balanceOf(address(this))
         );
     }
 
@@ -517,9 +605,52 @@ contract ARVOWeeklyPool is Initializable, AccessControlUpgradeable, UUPSUpgradea
         }
     }
 
+    function _buyOrbdAndAllocate(uint256 usdtAmount) internal {
+        if (address(pancakeRouter) == address(0) || pancakeSwapPath.length < 2) revert InvalidRouter();
+
+        address[] memory path = _swapPath();
+        uint256[] memory amounts = pancakeRouter.getAmountsOut(usdtAmount, path);
+        uint256 quotedOut = amounts[amounts.length - 1];
+        uint256 minOut = (quotedOut * pancakeSwapMinOutBps) / 10_000;
+
+        uint256 beforeBalance = IERC20(address(orbd)).balanceOf(address(this));
+        usdt.forceApprove(address(pancakeRouter), 0);
+        usdt.forceApprove(address(pancakeRouter), usdtAmount);
+
+        pancakeRouter.swapExactTokensForTokensSupportingFeeOnTransferTokens(
+            usdtAmount,
+            minOut,
+            path,
+            address(this),
+            block.timestamp + 900
+        );
+
+        uint256 received = IERC20(address(orbd)).balanceOf(address(this)) - beforeBalance;
+        if (received == 0) revert SwapFailed();
+
+        uint256 allocated;
+        for (uint8 i = 0; i < POOL_COUNT; i++) {
+            uint256 share = i == POOL_COUNT - 1
+                ? received - allocated
+                : (received * poolWeights[i]) / 10_000;
+            weeklyOrbdAccumulated[i] += share;
+            allocated += share;
+        }
+
+        emit OrbdPurchased(usdtAmount, received);
+    }
+
+    function _swapPath() internal view returns (address[] memory path) {
+        path = new address[](pancakeSwapPath.length);
+        for (uint256 i = 0; i < pancakeSwapPath.length; i++) {
+            path[i] = pancakeSwapPath[i];
+        }
+    }
+
     function _distributePool(uint8 poolId) internal {
         uint256 totalUsdt = weeklyAccumulated[poolId];
-        if (totalUsdt == 0) return;
+        uint256 totalOrbd = weeklyOrbdAccumulated[poolId];
+        if (totalUsdt == 0 && totalOrbd == 0) return;
 
         address[] storage members = _poolMembers[poolId];
         uint256 activeCount;
@@ -530,21 +661,34 @@ contract ARVOWeeklyPool is Initializable, AccessControlUpgradeable, UUPSUpgradea
 
         uint256 sharePerMember = totalUsdt / activeCount;
         weeklyAccumulated[poolId] = 0;
+        weeklyOrbdAccumulated[poolId] = 0;
         uint256 rewarded;
+        uint256 activeRemaining = activeCount;
+        uint256 remainingUsdt = totalUsdt;
+        uint256 remainingOrbd = totalOrbd;
 
         for (uint256 i = 0; i < members.length; i++) {
             address member = members[i];
             PoolMembership storage ms = memberships[member][poolId];
             if (!ms.isActive) continue;
 
-            ms.totalReceivedUsdt += sharePerMember;
+            uint256 usdtShare = activeRemaining == 1 ? remainingUsdt : sharePerMember;
+            remainingUsdt -= usdtShare;
+            ms.totalReceivedUsdt += usdtShare;
 
-            // Mint ORBD proportional to USDT share using governance-set rate.
-            // orbdAmount = sharePerMember * orbdPerUsdtRate / 1e18
-            uint256 orbdAmount = (sharePerMember * orbdPerUsdtRate) / 1e18;
-            orbd.mint(member, orbdAmount);
+            uint256 orbdAmount;
+            if (totalOrbd > 0) {
+                orbdAmount = activeRemaining == 1 ? remainingOrbd : totalOrbd / activeCount;
+                remainingOrbd -= orbdAmount;
+                IERC20(address(orbd)).safeTransfer(member, orbdAmount);
+            } else {
+                // Backward-compatible fallback for test deployments where buy mode is disabled.
+                orbdAmount = (usdtShare * orbdPerUsdtRate) / 1e18;
+                orbd.mint(member, orbdAmount);
+            }
             emit RewardDistributed(member, poolId, orbdAmount);
             rewarded++;
+            activeRemaining--;
 
             if (ms.totalReceivedUsdt >= poolTargets[poolId]) {
                 ms.isActive = false;

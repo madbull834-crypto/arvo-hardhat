@@ -90,6 +90,14 @@ module.exports = {
     apiKey: EXPLORER_API_KEY,
     customChains: [
       {
+        network: "bscMainnet",
+        chainId: 56,
+        urls: {
+          apiURL:    "https://api.bscscan.com/api",
+          browserURL:"https://bscscan.com",
+        },
+      },
+      {
         network: "bscTestnet",
         chainId: 97,
         urls: {

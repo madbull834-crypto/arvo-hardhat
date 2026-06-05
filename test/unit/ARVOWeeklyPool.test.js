@@ -38,6 +38,37 @@ describe("ARVOWeeklyPool", function () {
     ).to.be.revertedWithCustomError(weeklyPool, "DistributionTooSoon");
   });
 
+  it("buys ORBD on contribution and distributes purchased ORBD weekly", async function () {
+    const Router = await ethers.getContractFactory("MockPancakeV2Router");
+    const router = await Router.deploy();
+    await router.waitForDeployment();
+
+    const minterRole = await orbd.MINTER_ROLE();
+    await orbd.connect(deployer).grantRole(minterRole, deployer.address);
+    await orbd.mint(await router.getAddress(), ethers.parseUnits("1000", 18));
+
+    await weeklyPool.configurePancakeSwap(
+      await router.getAddress(),
+      [await usdt.getAddress(), await orbd.getAddress()],
+      9500,
+      true
+    );
+
+    await seedQualifiedPool();
+
+    const pool0 = await weeklyPool.getPoolTokenStats(0);
+    expect(pool0.accumulatedUsdt).to.equal(ethers.parseUnits("0.364", 18));
+    expect(pool0.accumulatedOrbd).to.equal(ethers.parseUnits("0.364", 18) * 2n);
+
+    const before = await orbd.balanceOf(genesis.address);
+    await time.increase(await weeklyPool.DISTRIBUTION_INTERVAL());
+    await weeklyPool.distributeWeekly(0);
+    const after = await orbd.balanceOf(genesis.address);
+
+    expect(after - before).to.equal(pool0.accumulatedOrbd);
+    expect((await weeklyPool.getPoolTokenStats(0)).accumulatedOrbd).to.equal(0n);
+  });
+
   describe("PancakeSwap ORBD/USDT TWAP oracle", function () {
     async function deployPair({ usdtIsToken0 = true } = {}) {
       const Pair = await ethers.getContractFactory("MockPancakeV2Pair");
