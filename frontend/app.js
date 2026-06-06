@@ -49,6 +49,9 @@ const SESSION_KEY = "arvo.wallet.connected";
 const ZERO = ethers.ZeroAddress;
 const MAX_LEVEL = 12;
 const POOL_COUNT = 11; // pools 0–10
+const TEAM_MAX_DEPTH = 20;
+const TEAM_MAX_MEMBERS = 1000;
+const CONTRACT_TEAM_PAGE_SIZE = 200;
 
 const state = {
   account: "",
@@ -388,7 +391,7 @@ async function refresh() {
       queryHistory(state.account, fromBlock, latest),
       queryPoolStats(state.account),
       queryOracleState(),
-      queryTeamFromContract(state.account),
+      queryTeamFromContract(state.account, tree),
       state.readMatrix.getDirectReferrals(state.account).catch(() => []),
       state.readMatrix.getIncomeTotals(state.account).catch(() => ({
         directIncome: 0n,
@@ -397,6 +400,9 @@ async function refresh() {
         withdrawn: 0n,
       }))
     ]);
+
+    const directReferralMembers = await queryDirectReferralMembers(directReferralAddresses, state.account, tree);
+    const mergedTreeMembers = mergeTeamMembers(treeMembers, directReferralMembers);
 
     state.data = {
       user,
@@ -415,7 +421,7 @@ async function refresh() {
       history,
       poolStats,
       oracleState,
-      treeMembers,
+      treeMembers: mergedTreeMembers,
       directReferralAddresses,
       incomeTotals
     };
@@ -523,12 +529,10 @@ async function queryExplorerLogs(filter, fromBlock, latest) {
   }
 }
 
-async function queryTreeMembers(root) {
+async function queryTreeMembers(root, maxDepth = TEAM_MAX_DEPTH, maxMembers = TEAM_MAX_MEMBERS) {
   const members = [];
   const queue = [{ address: root, parent: ZERO, side: "-", depth: 0 }];
   const seen = new Set([root.toLowerCase()]);
-  const maxMembers = 200;
-  const maxDepth = 20;
 
   while (queue.length && members.length < maxMembers) {
     const current = queue.shift();
@@ -539,7 +543,9 @@ async function queryTreeMembers(root) {
         state.readMatrix.getTreeInfo(current.address),
       ]);
 
-      members.push({ ...current, info, tree });
+      if (!sameAddress(current.address, root)) {
+        members.push({ ...current, info, tree });
+      }
 
       if (current.depth >= maxDepth) continue;
 
@@ -563,10 +569,14 @@ async function queryTreeMembers(root) {
   return members;
 }
 
-async function queryTeamFromContract(root) {
+async function queryTeamFromContract(root, rootTree = null) {
   try {
-    const addresses = await state.readMatrix.getTeamAddresses(root, 20, 200);
+    const addresses = await state.readMatrix.getTeamAddresses(root, TEAM_MAX_DEPTH, CONTRACT_TEAM_PAGE_SIZE);
     if (!addresses.length) return queryTreeMembers(root);
+
+    if (addresses.length >= CONTRACT_TEAM_PAGE_SIZE) {
+      return queryTreeMembers(root);
+    }
 
     const members = await Promise.all(addresses.map(async (address) => {
       const [info, tree] = await Promise.all([
@@ -584,13 +594,71 @@ async function queryTeamFromContract(root) {
       };
     }));
 
-    return annotateTreeMembers(root, members);
+    return annotateTreeMembers(root, members, rootTree);
   } catch {
     return queryTreeMembers(root);
   }
 }
 
-function annotateTreeMembers(root, members) {
+function queryDirectReferralMembers(addresses, root, rootTree = null) {
+  const uniqueAddresses = [...new Set((addresses || [])
+    .filter((address) => address && address !== ZERO)
+    .map((address) => ethers.getAddress(address).toLowerCase()))]
+    .map((address) => ethers.getAddress(address));
+
+  return Promise.all(uniqueAddresses.map(async (address) => {
+    try {
+      const [info, tree] = await Promise.all([
+        state.readMatrix.getUserInfo(address),
+        state.readMatrix.getTreeInfo(address),
+      ]);
+      const isPlacedUnderRoot = sameAddress(tree.parent, root);
+      return {
+        address,
+        parent: tree.parent && tree.parent !== ZERO ? tree.parent : root,
+        side: isPlacedUnderRoot ? sideFromTree(rootTree, address, "Referral") : "Referral",
+        depth: isPlacedUnderRoot ? 1 : 1,
+        info,
+        tree,
+      };
+    } catch {
+      return null;
+    }
+  })).then((members) => members.filter(Boolean));
+}
+
+function mergeTeamMembers(...memberLists) {
+  const merged = new Map();
+
+  for (const list of memberLists) {
+    for (const member of list || []) {
+      if (!member?.address || sameAddress(member.address, state.account)) continue;
+      const key = member.address.toLowerCase();
+      const existing = merged.get(key);
+      if (!existing || Number(existing.depth || 0) === 0 || existing.side === "Referral") {
+        merged.set(key, member);
+      }
+    }
+  }
+
+  return [...merged.values()].sort((a, b) => {
+    const depthDelta = Number(a.depth || 0) - Number(b.depth || 0);
+    if (depthDelta) return depthDelta;
+    if (a.side === b.side) return a.address.localeCompare(b.address);
+    if (a.side === "Left") return -1;
+    if (b.side === "Left") return 1;
+    return 0;
+  });
+}
+
+function sideFromTree(tree, childAddress, fallback = "-") {
+  if (!tree) return fallback;
+  if (sameAddress(tree.leftChild, childAddress)) return "Left";
+  if (sameAddress(tree.rightChild, childAddress)) return "Right";
+  return fallback;
+}
+
+function annotateTreeMembers(root, members, rootTree = null) {
   const byParent  = new Map();
   const byAddress = new Map();
 
@@ -610,16 +678,20 @@ function annotateTreeMembers(root, members) {
 
     for (const child of children) {
       const parentTree = current.address === root
-        ? sameAddress(root, state.account) ? state.data?.tree : state.previewTree
+        ? rootTree || (sameAddress(root, state.account) ? state.data?.tree : state.previewTree)
         : byAddress.get(current.address.toLowerCase())?.tree;
       child.depth = current.depth + 1;
-      child.side = parentTree && sameAddress(parentTree.leftChild, child.address) ? "Left" : "Right";
+      child.side = sideFromTree(parentTree, child.address, child.side || "-");
       annotated.push(child);
       queue.push({ address: child.address, depth: child.depth });
     }
   }
 
-  return annotated.length ? annotated : members;
+  return (annotated.length ? annotated : members).sort((a, b) => {
+    const depthDelta = Number(a.depth || 0) - Number(b.depth || 0);
+    if (depthDelta) return depthDelta;
+    return a.address.localeCompare(b.address);
+  });
 }
 
 // Query all 11 pools (0–10)
@@ -1029,16 +1101,32 @@ function filterByDownlineLevel(members) {
   return members.filter((member) => Number(member.depth) === selectedLevel);
 }
 
+function teamMembers() {
+  return (state.data?.treeMembers || [])
+    .filter((member) => !sameAddress(member.address, state.account));
+}
+
+function levelCounts(members) {
+  const counts = new Map();
+  for (const member of members || []) {
+    const depth = Number(member.depth || 0);
+    if (depth > 0) counts.set(depth, (counts.get(depth) || 0) + 1);
+  }
+  return counts;
+}
+
 function tablePage(title, rows, columns, options = {}) {
   const selectedLevel = downlineLevelFilter();
   const showAllButton = options.showAllButton !== false;
+  const counts = options.levelCounts || new Map();
   const levelButtons = Array.from({ length: MAX_LEVEL }, (_, i) => {
     const level = i + 1;
     const statusClass = level === selectedLevel ? "current" : "unlocked";
-    return `<button class="${statusClass}" data-downline-level="${level}">Level ${level}</button>`;
+    const count = counts.get(level) || 0;
+    return `<button class="${statusClass}" data-downline-level="${level}">Level ${level}${count ? ` (${count})` : ""}</button>`;
   }).join("");
   const allButton = showAllButton
-    ? `<button class="${selectedLevel ? "unlocked" : "current"}" data-downline-level="0">All</button>`
+    ? `<button class="${selectedLevel ? "unlocked" : "current"}" data-downline-level="0">All${counts.size ? ` (${[...counts.values()].reduce((sum, count) => sum + count, 0)})` : ""}</button>`
     : "";
   const subtitle = selectedLevel
     ? `<div class="table-filter-note">Showing downline Level ${selectedLevel}</div>`
@@ -1061,9 +1149,11 @@ function tablePage(title, rows, columns, options = {}) {
 
 function directs() {
   const selectedLevel = downlineLevelFilter();
+  const allMembers = teamMembers();
+  const counts = levelCounts(allMembers);
   if (selectedLevel) {
     const members = filterByDownlineLevel(
-      state.data.treeMembers.filter((member) => !sameAddress(member.address, state.account))
+      allMembers
     );
     const rows = members.map((member, index) => `
       <tr>
@@ -1074,12 +1164,12 @@ function directs() {
         <td>${sameAddress(member.info.referrer, state.account) ? "Direct referral" : "Downline wallet"}</td>
       </tr>
     `).join("") || `<tr><td colspan="5">No wallets found at downline Level ${selectedLevel}</td></tr>`;
-    return tablePage("Direct Team", rows, ["Sr. No.", "User", "Level", "Placement", "Relationship"]);
+    return tablePage("Direct Team", rows, ["Sr. No.", "User", "Level", "Placement", "Relationship"], { levelCounts: counts });
   }
 
   const events = state.data.registeredEvents.asReferrer;
-  const directMembers = state.data.treeMembers
-    .filter((member) => !sameAddress(member.address, state.account) && sameAddress(member.info.referrer, state.account));
+  const directMembers = allMembers
+    .filter((member) => sameAddress(member.info.referrer, state.account));
   const directAddressSet = new Set([
     ...state.data.directReferralAddresses.map((address) => address.toLowerCase()),
     ...directMembers.map((member) => member.address.toLowerCase()),
@@ -1114,14 +1204,14 @@ function directs() {
     `;
     });
   const rows = [...rowsFromEvents, ...rowsFromStorage].join("") || `<tr><td colspan="5">No direct referral records found. Contract direct count: ${state.data.user.directCount.toString()}</td></tr>`;
-  return tablePage("Direct Team", rows, ["Sr. No.", "User", "Level", "Join Block", "Direct Income"]);
+  return tablePage("Direct Team", rows, ["Sr. No.", "User", "Level", "Join Block", "Direct Income"], { levelCounts: counts });
 }
 
 function myTeam() {
   const selectedLevel = downlineLevelFilter();
-  const members = filterByDownlineLevel(
-    state.data.treeMembers.filter((member) => !sameAddress(member.address, state.account))
-  );
+  const allMembers = teamMembers();
+  const members = filterByDownlineLevel(allMembers);
+  const counts = levelCounts(allMembers);
   const rows = members.map((member, index) => `
     <tr>
       <td>${index + 1}</td>
@@ -1133,14 +1223,14 @@ function myTeam() {
       <td>${member.info.directCount.toString()}</td>
     </tr>
   `).join("") || `<tr><td colspan="7">${selectedLevel ? `No team records found at downline Level ${selectedLevel}` : "No team records yet"}</td></tr>`;
-  return tablePage("My Team", rows, ["SNo.", "ID", "Address", "Sponsor ID", "Placement", "Rank", "Direct Team"]);
+  return tablePage("My Team", rows, ["SNo.", "ID", "Address", "Sponsor ID", "Placement", "Rank", "Direct Team"], { levelCounts: counts });
 }
 
 function community() {
   const selectedLevel = downlineLevelFilter();
-  const members = filterByDownlineLevel(
-    state.data.treeMembers.filter((member) => !sameAddress(member.address, state.account))
-  );
+  const allMembers = teamMembers();
+  const members = filterByDownlineLevel(allMembers);
+  const counts = levelCounts(allMembers);
   const rows = members.map((member, index) => `
     <tr>
       <td>${index + 1}</td>
@@ -1152,7 +1242,7 @@ function community() {
       <td>${formatUsdt(member.info.claimableUsdt)} USDT</td>
     </tr>
   `).join("") || `<tr><td colspan="7">${selectedLevel ? `No community members found at downline Level ${selectedLevel}` : "No community members found under this wallet"}</td></tr>`;
-  return tablePage("Community Info", rows, ["SNo.", "Member", "Parent", "Side", "Depth", "Rank", "Claimable"]);
+  return tablePage("Community Info", rows, ["SNo.", "Member", "Parent", "Side", "Depth", "Rank", "Claimable"], { levelCounts: counts });
 }
 
 function tree() {
@@ -1345,7 +1435,7 @@ async function loadTree(address) {
     ]);
     state.previewRootInfo = info;
     state.previewTree = tree;
-    state.previewMembers = await queryTeamFromContract(root);
+    state.previewMembers = await queryTeamFromContract(root, tree);
     render();
   } catch (error) {
     setStatus(normalizeError(error), "error");
