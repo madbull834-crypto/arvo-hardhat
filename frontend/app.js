@@ -402,7 +402,10 @@ async function refresh() {
     ]);
 
     const directReferralMembers = await queryDirectReferralMembers(directReferralAddresses, state.account, tree);
-    const mergedTreeMembers = mergeTeamMembers(treeMembers, directReferralMembers);
+    const mergedTreeMembers = normalizeSponsorTeamMembers(
+      state.account,
+      mergeTeamMembers(treeMembers, directReferralMembers)
+    );
 
     state.data = {
       user,
@@ -615,7 +618,8 @@ function queryDirectReferralMembers(addresses, root, rootTree = null) {
       const isPlacedUnderRoot = sameAddress(tree.parent, root);
       return {
         address,
-        parent: tree.parent && tree.parent !== ZERO ? tree.parent : root,
+        parent: info.referrer && info.referrer !== ZERO ? info.referrer : root,
+        placementParent: tree.parent && tree.parent !== ZERO ? tree.parent : root,
         side: isPlacedUnderRoot ? sideFromTree(rootTree, address, "Referral") : "Referral",
         depth: isPlacedUnderRoot ? 1 : 1,
         info,
@@ -649,6 +653,71 @@ function mergeTeamMembers(...memberLists) {
     if (b.side === "Left") return 1;
     return 0;
   });
+}
+
+function normalizeSponsorTeamMembers(root, members) {
+  const rootKey = root.toLowerCase();
+  const byAddress = new Map();
+
+  for (const member of members || []) {
+    if (!member?.address || sameAddress(member.address, root)) continue;
+    const placementParent = member.placementParent || member.parent || member.tree?.parent || ZERO;
+    const sponsorParent = member.info?.referrer && member.info.referrer !== ZERO
+      ? member.info.referrer
+      : placementParent;
+
+    byAddress.set(member.address.toLowerCase(), {
+      ...member,
+      placementParent,
+      placementSide: member.placementSide || member.side || "-",
+      placementDepth: Number(member.placementDepth || member.depth || 0),
+      parent: sponsorParent,
+      side: "Sponsor",
+      depth: 0,
+    });
+  }
+
+  const childrenBySponsor = new Map();
+  for (const member of byAddress.values()) {
+    const parentKey = member.parent?.toLowerCase?.() || rootKey;
+    if (!childrenBySponsor.has(parentKey)) childrenBySponsor.set(parentKey, []);
+    childrenBySponsor.get(parentKey).push(member);
+  }
+
+  for (const children of childrenBySponsor.values()) {
+    children.sort((a, b) => a.address.localeCompare(b.address));
+  }
+
+  const ordered = [];
+  const seen = new Set();
+  const queue = [{ address: root, depth: 0 }];
+
+  while (queue.length) {
+    const current = queue.shift();
+    const children = childrenBySponsor.get(current.address.toLowerCase()) || [];
+
+    for (const child of children) {
+      const key = child.address.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      child.depth = current.depth + 1;
+      child.side = "Sponsor";
+      ordered.push(child);
+      queue.push({ address: child.address, depth: child.depth });
+    }
+  }
+
+  const orphaned = [...byAddress.values()]
+    .filter((member) => !seen.has(member.address.toLowerCase()))
+    .map((member) => ({
+      ...member,
+      parent: member.placementParent || member.parent || root,
+      side: member.placementSide || "Placement",
+      depth: Number(member.placementDepth || member.depth || 1),
+    }))
+    .sort((a, b) => Number(a.depth || 0) - Number(b.depth || 0) || a.address.localeCompare(b.address));
+
+  return [...ordered, ...orphaned];
 }
 
 function sideFromTree(tree, childAddress, fallback = "-") {
@@ -943,15 +1012,15 @@ function dashboard() {
         </div>
       </div>
     </section>
-    <div class="section-label">Packages (Level Progress)</div>
-    <section class="packages">${packages.map(([price, rank], i) => {
-      const level = i + 1;
+    <div class="section-label">Packages (Level 2-12 Progress)</div>
+    <section class="packages">${packages.slice(0, MAX_LEVEL - 1).map(([price], i) => {
+      const level = i + 2;
       const unlocked = Number(user.currentLevel) >= level;
       const current = Number(user.currentLevel) === level;
       return `
       <article class="package-card ${unlocked ? "unlocked" : "locked"} ${current ? "current" : ""}">
         <div>${price}</div>
-        <div class="rank-pill">${rank}</div>
+        <div class="rank-pill">Level ${level}</div>
         <div class="coin-mark">USDT</div>
         <button class="tiny-black" disabled>${current ? "Current" : unlocked ? "Unlocked" : "Locked"}</button>
       </article>
@@ -1115,6 +1184,26 @@ function levelCounts(members) {
   return counts;
 }
 
+function memberIdCell(address) {
+  if (!address || address === ZERO) return "-";
+  return `<a href="${explorerAddress(address)}" target="_blank" rel="noreferrer">${shortAddress(address)}</a>`;
+}
+
+function memberAddressCell(address) {
+  if (!address || address === ZERO) return "-";
+  return `<a href="${explorerAddress(address)}" target="_blank" rel="noreferrer">${address}</a>`;
+}
+
+function sponsorCell(member) {
+  return memberIdCell(member.info.referrer);
+}
+
+function placementText(member) {
+  const parent = member.placementParent || member.tree?.parent || member.parent;
+  const side = member.placementSide || member.side || "-";
+  return `${shortAddress(parent)} / ${side}`;
+}
+
 function tablePage(title, rows, columns, options = {}) {
   const selectedLevel = downlineLevelFilter();
   const showAllButton = options.showAllButton !== false;
@@ -1158,13 +1247,14 @@ function directs() {
     const rows = members.map((member, index) => `
       <tr>
         <td>${index + 1}</td>
-        <td><a href="${explorerAddress(member.address)}" target="_blank" rel="noreferrer">${shortAddress(member.address)}</a></td>
+        <td>${memberIdCell(member.address)}</td>
+        <td>${memberAddressCell(member.address)}</td>
         <td>${levelBadge(member.info.currentLevel)}</td>
-        <td>Level ${member.depth} / ${member.side}</td>
+        <td>Sponsor Level ${member.depth}</td>
         <td>${sameAddress(member.info.referrer, state.account) ? "Direct referral" : "Downline wallet"}</td>
       </tr>
-    `).join("") || `<tr><td colspan="5">No wallets found at downline Level ${selectedLevel}</td></tr>`;
-    return tablePage("Direct Team", rows, ["Sr. No.", "User", "Level", "Placement", "Relationship"], { levelCounts: counts });
+    `).join("") || `<tr><td colspan="6">No wallets found at downline Level ${selectedLevel}</td></tr>`;
+    return tablePage("Direct Team", rows, ["Sr. No.", "Member ID", "Address", "Level", "Sponsor Level", "Relationship"], { levelCounts: counts });
   }
 
   const events = state.data.registeredEvents.asReferrer;
@@ -1182,7 +1272,8 @@ function directs() {
     return `
     <tr>
       <td>${index + 1}</td>
-      <td><a href="${explorerAddress(event.args.user)}" target="_blank" rel="noreferrer">${shortAddress(event.args.user)}</a></td>
+      <td>${memberIdCell(event.args.user)}</td>
+      <td>${memberAddressCell(event.args.user)}</td>
       <td>${member ? levelBadge(member.info.currentLevel) : "-"}</td>
       <td>Block #${event.blockNumber}</td>
       <td>${paid ? `${formatUsdt(paid.args.amount)} USDT` : "Registered"}</td>
@@ -1196,15 +1287,16 @@ function directs() {
       return `
       <tr>
         <td>${rowsFromEvents.length + index + 1}</td>
-        <td><a href="${explorerAddress(address)}" target="_blank" rel="noreferrer">${shortAddress(address)}</a></td>
+        <td>${memberIdCell(address)}</td>
+        <td>${memberAddressCell(address)}</td>
         <td>${member ? levelBadge(member.info.currentLevel) : "-"}</td>
-        <td>${member ? `Tree level ${member.depth}` : "Contract storage"}</td>
+        <td>${member ? `Sponsor level ${member.depth}` : "Contract storage"}</td>
         <td>Referral record</td>
       </tr>
     `;
     });
-  const rows = [...rowsFromEvents, ...rowsFromStorage].join("") || `<tr><td colspan="5">No direct referral records found. Contract direct count: ${state.data.user.directCount.toString()}</td></tr>`;
-  return tablePage("Direct Team", rows, ["Sr. No.", "User", "Level", "Join Block", "Direct Income"], { levelCounts: counts });
+  const rows = [...rowsFromEvents, ...rowsFromStorage].join("") || `<tr><td colspan="6">No direct referral records found. Contract direct count: ${state.data.user.directCount.toString()}</td></tr>`;
+  return tablePage("Direct Team", rows, ["Sr. No.", "Member ID", "Address", "Level", "Join Block", "Direct Income"], { levelCounts: counts });
 }
 
 function myTeam() {
@@ -1215,15 +1307,16 @@ function myTeam() {
   const rows = members.map((member, index) => `
     <tr>
       <td>${index + 1}</td>
-      <td>${shortAddress(member.address)}</td>
-      <td><a href="${explorerAddress(member.address)}" target="_blank" rel="noreferrer">${member.address}</a></td>
-      <td>${shortAddress(member.info.referrer)}</td>
-      <td>Level ${member.depth} / ${member.side}</td>
+      <td>${memberIdCell(member.address)}</td>
+      <td>${memberAddressCell(member.address)}</td>
+      <td>${sponsorCell(member)}</td>
+      <td>Sponsor Level ${member.depth}</td>
+      <td>${placementText(member)}</td>
       <td>${levelBadge(member.info.currentLevel)}</td>
       <td>${member.info.directCount.toString()}</td>
     </tr>
-  `).join("") || `<tr><td colspan="7">${selectedLevel ? `No team records found at downline Level ${selectedLevel}` : "No team records yet"}</td></tr>`;
-  return tablePage("My Team", rows, ["SNo.", "ID", "Address", "Sponsor ID", "Placement", "Rank", "Direct Team"], { levelCounts: counts });
+  `).join("") || `<tr><td colspan="8">${selectedLevel ? `No team records found at downline Level ${selectedLevel}` : "No team records yet"}</td></tr>`;
+  return tablePage("My Team", rows, ["SNo.", "ID", "Address", "Sponsor/Upline", "Level", "Placement Parent", "Rank", "Direct Team"], { levelCounts: counts });
 }
 
 function community() {
@@ -1234,15 +1327,16 @@ function community() {
   const rows = members.map((member, index) => `
     <tr>
       <td>${index + 1}</td>
-      <td>${shortAddress(member.address)}</td>
-      <td>${shortAddress(member.parent)}</td>
-      <td>${member.side}</td>
+      <td>${memberIdCell(member.address)}</td>
+      <td>${memberAddressCell(member.address)}</td>
+      <td>${sponsorCell(member)}</td>
       <td>${member.depth}</td>
+      <td>${placementText(member)}</td>
       <td>${levelBadge(member.info.currentLevel)}</td>
       <td>${formatUsdt(member.info.claimableUsdt)} USDT</td>
     </tr>
-  `).join("") || `<tr><td colspan="7">${selectedLevel ? `No community members found at downline Level ${selectedLevel}` : "No community members found under this wallet"}</td></tr>`;
-  return tablePage("Community Info", rows, ["SNo.", "Member", "Parent", "Side", "Depth", "Rank", "Claimable"], { levelCounts: counts });
+  `).join("") || `<tr><td colspan="8">${selectedLevel ? `No community members found at downline Level ${selectedLevel}` : "No community members found under this wallet"}</td></tr>`;
+  return tablePage("Community Info", rows, ["SNo.", "Member ID", "Address", "Sponsor/Upline", "Level", "Placement Parent", "Rank", "Claimable"], { levelCounts: counts });
 }
 
 function tree() {
@@ -1304,7 +1398,7 @@ function treeView(title, showSearch) {
             ${children.map((child) => renderBranch(
               child.address,
               child.info,
-              `Level ${child.depth} / ${child.side}`,
+              `Sponsor Level ${child.depth}`,
               "Focus"
             )).join("")}
           </ul>
@@ -1328,7 +1422,7 @@ function treeView(title, showSearch) {
     <section class="community-tool">
       <div class="tree-header">
         <div>
-          <p>This shows the selected wallet and every downline member loaded below it.</p>
+          <p>This shows sponsor/referrer downline. Placement parent is shown separately in tables.</p>
           <h1>${title}</h1>
           <span class="tree-count">${totalShown} wallet${totalShown === 1 ? "" : "s"} shown</span>
         </div>
@@ -1435,7 +1529,10 @@ async function loadTree(address) {
     ]);
     state.previewRootInfo = info;
     state.previewTree = tree;
-    state.previewMembers = await queryTeamFromContract(root, tree);
+    state.previewMembers = normalizeSponsorTeamMembers(
+      root,
+      await queryTeamFromContract(root, tree)
+    );
     render();
   } catch (error) {
     setStatus(normalizeError(error), "error");
