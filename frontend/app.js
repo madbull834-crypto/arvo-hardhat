@@ -903,13 +903,13 @@ async function approveAndRegister(referrer) {
 
 async function withdraw() {
   try {
-    if (!state.data?.user?.claimableUsdt) throw new Error("There is no withdrawable balance.");
-    setBusy(true, "Open wallet and confirm withdrawal...");
+    if (!state.data?.user?.claimableUsdt) throw new Error("There is no claimable balance.");
+    setBusy(true, "Open wallet and confirm claim...");
     const gas = await state.matrix.withdraw.estimateGas();
     const tx  = await state.matrix.withdraw({ gasLimit: (gas * 120n) / 100n });
-    setStatus(`Withdrawal submitted: ${tx.hash}`, "info");
+    setStatus(`Claim submitted: ${tx.hash}`, "info");
     await tx.wait();
-    setStatus("Withdrawal complete.", "success");
+    setStatus("Claim complete.", "success");
     await refresh();
   } catch (error) {
     setStatus(normalizeError(error), "error");
@@ -1100,7 +1100,7 @@ function dashboard() {
     }).join("")}</section>
     <section class="tile-grid">
       <div class="income-tile"><div class="amount">$ ${formatUsdt(directIncome)}</div><strong>Direct Income</strong></div>
-      <div class="income-tile"><div class="amount">$ ${formatUsdt(user.claimableUsdt)}</div><strong>Withdrawable Income</strong><button class="tiny-black" data-action="withdraw" ${state.busy || user.claimableUsdt === 0n ? "disabled" : ""}>Withdraw</button></div>
+      <div class="income-tile"><div class="amount">$ ${formatUsdt(user.claimableUsdt)}</div><strong>Claimable Income</strong><button class="tiny-black" data-action="withdraw" ${state.busy || user.claimableUsdt === 0n ? "disabled" : ""}>Claim</button></div>
       <div class="income-tile"><div class="amount">${formatOrbd(data.orbdBalance)} ORBD</div><strong>ORBD Balance</strong></div>
       <div class="income-tile"><div class="amount">${formatOrbd(totalOrbdReceived)} ORBD</div><strong>Total ORBD Earned</strong></div>
       <div class="income-tile"><div class="amount">${oracleRate}</div><strong>Oracle Rate</strong><span>${oracleStatus}</span></div>
