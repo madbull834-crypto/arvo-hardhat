@@ -1351,22 +1351,7 @@ function treeView(title, showSearch) {
   const rootInfo = isOwnRoot
     ? state.data.user
     : state.previewRootInfo || memberByAddress.get(root.toLowerCase())?.info;
-  const childrenByParent = new Map();
-
-  for (const member of members) {
-    const parentKey = String(member.parent || ZERO).toLowerCase();
-    if (!childrenByParent.has(parentKey)) childrenByParent.set(parentKey, []);
-    childrenByParent.get(parentKey).push(member);
-  }
-
-  for (const children of childrenByParent.values()) {
-    children.sort((a, b) => {
-      if (a.side === b.side) return a.address.localeCompare(b.address);
-      if (a.side === "Left") return -1;
-      if (b.side === "Left") return 1;
-      return 0;
-    });
-  }
+  const rootTree = isOwnRoot ? state.data.tree : state.previewTree;
 
   const treeNode = (address, info, label, actionLabel, actionAddress = address) => {
     const empty   = !address;
@@ -1388,19 +1373,38 @@ function treeView(title, showSearch) {
     `;
   };
 
-  const renderBranch = (address, info, label, actionLabel, actionAddress = address) => {
-    const children = childrenByParent.get(address.toLowerCase()) || [];
+  const childBranch = (parentTree, side) => {
+    const childAddress = side === "Left" ? parentTree?.leftChild : parentTree?.rightChild;
+    if (!childAddress || childAddress === ZERO) {
+      return `<li>${treeNode("", null, side, "Empty")}</li>`;
+    }
+
+    const child = memberByAddress.get(childAddress.toLowerCase());
+    return renderBranch(
+      childAddress,
+      child?.info || null,
+      side,
+      "Focus",
+      childAddress,
+      child?.tree || null
+    );
+  };
+
+  const renderBranch = (address, info, label, actionLabel, actionAddress = address, treeInfo = null) => {
+    const activeTree = treeInfo || memberByAddress.get(address.toLowerCase())?.tree;
+    const hasLoadedChildren = Boolean(
+      activeTree &&
+      ((activeTree.leftChild && activeTree.leftChild !== ZERO) ||
+       (activeTree.rightChild && activeTree.rightChild !== ZERO))
+    );
+
     return `
       <li>
         ${treeNode(address, info, label, actionLabel, actionAddress)}
-        ${children.length ? `
+        ${hasLoadedChildren ? `
           <ul>
-            ${children.map((child) => renderBranch(
-              child.address,
-              child.info,
-              `Sponsor Level ${child.depth}`,
-              "Focus"
-            )).join("")}
+            ${childBranch(activeTree, "Left")}
+            ${childBranch(activeTree, "Right")}
           </ul>
         ` : ""}
       </li>
@@ -1414,7 +1418,8 @@ function treeView(title, showSearch) {
         rootInfo,
         isOwnRoot ? "Your Wallet" : "Selected Wallet",
         isOwnRoot ? "You are here" : "Back to My Wallet",
-        isOwnRoot ? root : state.account
+        isOwnRoot ? root : state.account,
+        rootTree
       )}</ul>`
     : `<div class="tree-empty">No registered member found for this wallet.</div>`;
 
@@ -1422,7 +1427,7 @@ function treeView(title, showSearch) {
     <section class="community-tool">
       <div class="tree-header">
         <div>
-          <p>This shows sponsor/referrer downline. Placement parent is shown separately in tables.</p>
+          <p>This shows the binary Left and Right placement tree. Sponsor/upline is shown in Direct, My Team, and Community Info.</p>
           <h1>${title}</h1>
           <span class="tree-count">${totalShown} wallet${totalShown === 1 ? "" : "s"} shown</span>
         </div>
