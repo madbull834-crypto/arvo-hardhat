@@ -1,0 +1,55 @@
+{
+  "network": "bscMainnet",
+  "chainId": 56,
+  "deployedAt": "2026-06-06T01:09:40.237Z",
+  "deployBlock": 102557553,
+  "deployer": "0xfbc4A1B68e227802CBE8F8764626917Ab17B4153",
+  "genesis": "0x4E34eA0E1aA18a5EB0E6B8B0620cB76E1Ecadd4c",
+  "skipAdmin1": "0xa64BD3CE3ed3266956F1b076a3DEAae88F81A011",
+  "skipAdmin2": "0x2a6097f3076817D8638Fa2c6BCe57e4e3A972790",
+  "contracts": {
+    "usdt": "0x55d398326f99059fF775485246999027B3197955",
+    "orbd": "0x4E24C684a90f2c1f9030a5608A6c3A6fa4E854f5",
+    "oraclePair": "",
+    "weeklyPool": "0x8F7Ee3BB8F371A9ef7c40CEcD5E407294Fdc4030",
+    "weeklyPoolImpl": "0x91748800D8345A42699B81C8DcA7f446e48B87df",
+    "matrix": "0x181Ff4D45FB3D2f848FdeC01166f830607558ABD",
+    "matrixImpl": "0xb6bC063fA194781B0F9Ea88C4d0BC3E29254fDf0"
+  },
+  "poolWeights": [
+    910,
+    909,
+    909,
+    909,
+    909,
+    909,
+    909,
+    909,
+    909,
+    909,
+    909
+  ],
+  "oracle": {
+    "pair": "",
+    "minTwapInterval": 0,
+    "maxAge": 0,
+    "maxRateChangeBps": 0
+  },
+  "pancakeBuy": {
+    "router": "0x10ED43C718714eb63d5aA57B78B54704E256024E",
+    "path": [
+      "0x55d398326f99059fF775485246999027B3197955",
+      "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+      "0x4E24C684a90f2c1f9030a5608A6c3A6fa4E854f5"
+    ],
+    "minOutBps": 9500,
+    "enabled": true
+  },
+  "roles": {},
+  "adminHandoff": {
+    "finalAdmin": "",
+    "deployerPoolAdminRevoked": false,
+    "matrixOwnershipTransferred": false
+  },
+  "minterGranted": false
+}
