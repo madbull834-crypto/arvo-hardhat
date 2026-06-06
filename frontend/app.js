@@ -315,7 +315,6 @@ async function connect({ silent = false } = {}) {
     state.previewTree = null;
     state.previewRootInfo = null;
     state.previewMembers = [];
-    localStorage.setItem(SESSION_KEY, "1");
 
     try {
       await state.reader.getBlockNumber();
@@ -420,7 +419,12 @@ async function refresh() {
       directReferralAddresses,
       incomeTotals
     };
-    state.status = user.isRegistered ? "" : "Wallet connected, but this address is not registered yet.";
+    if (user.isRegistered) {
+      localStorage.setItem(SESSION_KEY, "1");
+    } else {
+      localStorage.removeItem(SESSION_KEY);
+    }
+    state.status = user.isRegistered ? "" : "Wallet connected only. This address is not registered yet.";
     state.statusType = user.isRegistered ? "info" : "error";
   } catch (error) {
     state.status = normalizeError(error);
@@ -681,7 +685,7 @@ async function getJoinFee() {
 async function approveAndRegister(referrer) {
   if (!state.account) {
     await connect();
-    return;
+    if (!state.account) return;
   }
 
   try {
@@ -702,6 +706,12 @@ async function approveAndRegister(referrer) {
     const tx  = await state.matrix.register(cleanReferrer, { gasLimit: (gas * 120n) / 100n });
     setStatus(`Registration submitted: ${tx.hash}`, "info");
     await tx.wait();
+
+    const user = await state.readMatrix.getUserInfo(state.account);
+    if (!user.isRegistered) {
+      throw new Error("Registration transaction completed, but this wallet is not registered yet. Refresh and check the transaction.");
+    }
+
     setStatus("Registration complete.", "success");
     await refresh();
   } catch (error) {
@@ -764,23 +774,30 @@ function login() {
   const defaultReferrer = params.get("ref") || CONFIG.contracts.genesis;
   const connected = Boolean(state.account);
   const unregistered = connected && state.data && !state.data.user.isRegistered;
+  const joinFee = state.data?.joinFee || 10_000_000_000_000_000_000n;
+  const walletUsdt = state.data?.usdtBalance || 0n;
+  const registrationMeta = !connected
+    ? "Connect wallet to approve USDT and register"
+    : unregistered
+      ? `Not registered on-chain. Wallet balance: ${formatUsdt(walletUsdt)} ${state.data.tokenSymbol}. Registration fee: ${formatUsdt(joinFee)} ${state.data.tokenSymbol}.`
+      : "This wallet is already registered";
   return `
     <div class="login-page">
       <section class="login-stack">
         <div class="wallet-pill"><span class="coin-mark">${escapeHtml(CONFIG.nativeCurrency.symbol)}</span>${connected ? shortAddress(state.account) : "Wallet not connected"}</div>
         <div class="login-card">
-          <h1>Member Login</h1>
-          <p>${connected ? "Wallet connected" : "Please Login Automatically"}</p>
-          <button class="connect-button" data-action="connect" ${state.busy ? "disabled" : ""}>${connected ? "Refresh Account" : "Log In"}</button>
+          <h1>Member Access</h1>
+          <p>${connected ? unregistered ? "Wallet connected only. Registration required." : "Registered wallet connected" : "Connect wallet to continue"}</p>
+          <button class="connect-button" data-action="connect" ${state.busy ? "disabled" : ""}>${connected ? "Refresh Wallet" : "Connect Wallet"}</button>
         </div>
         <div class="login-card">
           <h2>Create Your Account</h2>
           <form class="upline-form" data-register-form>
             <input name="referrer" placeholder="Upline Address" value="${escapeHtml(defaultReferrer)}" ${state.busy ? "disabled" : ""}>
             <div class="login-meta">
-              ${unregistered ? `Balance: ${formatUsdt(state.data.usdtBalance)} ${state.data.tokenSymbol}` : "Connect wallet to register"}
+              ${registrationMeta}
             </div>
-            <button class="connect-button" type="submit" ${state.busy ? "disabled" : ""}>${connected ? "Approve & Register" : "Connect Wallet"}</button>
+            <button class="connect-button" type="submit" ${state.busy || (connected && !unregistered) ? "disabled" : ""}>${connected ? "Approve & Register" : "Connect Wallet & Register"}</button>
           </form>
         </div>
         ${statusHtml()}
@@ -1295,10 +1312,6 @@ app.addEventListener("submit", async (event) => {
   const form = event.target.closest("[data-register-form]");
   if (form) {
     event.preventDefault();
-    if (!state.account) {
-      await connect();
-      return;
-    }
     const referrer = new FormData(form).get("referrer");
     await approveAndRegister(referrer);
     return;
