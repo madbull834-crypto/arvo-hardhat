@@ -20,6 +20,14 @@
     "deploy:bnbMainnet": "npx hardhat run scripts/deploy_bsc_mainnet.js --network bscMainnet",
     "verify:bscMainnet": "npx hardhat run scripts/verify_bsc_mainnet.js --network bscMainnet",
     "verify:bnbMainnet": "npx hardhat run scripts/verify_bsc_mainnet.js --network bscMainnet",
+    "configure:pancakeInfinity:bscMainnet": "npx hardhat run scripts/configure_pancake_infinity.js --network bscMainnet",
+    "configure:pancakeInfinity:bnbMainnet": "npx hardhat run scripts/configure_pancake_infinity.js --network bscMainnet",
+    "check:pancakeInfinity:bscMainnet": "npx hardhat run scripts/check_pancake_infinity_status.js --network bscMainnet",
+    "check:pancakeInfinity:bnbMainnet": "npx hardhat run scripts/check_pancake_infinity_status.js --network bscMainnet",
+    "deploy:pancakeInfinity:bscMainnet": "npx hardhat run scripts/deploy_pancake_infinity_pool.js --network bscMainnet",
+    "deploy:pancakeInfinity:bnbMainnet": "npx hardhat run scripts/deploy_pancake_infinity_pool.js --network bscMainnet",
+    "dryrun:pancakeInfinity:bscMainnet": "DRY_RUN=true npx hardhat run scripts/deploy_pancake_infinity_pool.js --network bscMainnet",
+    "validate:pancakeInfinity:bscMainnet": "VALIDATE_ONLY=true npx hardhat run scripts/deploy_pancake_infinity_pool.js --network bscMainnet",
     "deploy:bnbTestnet": "npx hardhat run scripts/deploy_testnet_full.js --network bscTestnet",
     "deploy:tokens:sepolia": "npx hardhat run scripts/deploy_test_tokens.js --network sepolia",
     "deploy:tokens:bscTestnet": "npx hardhat run scripts/deploy_test_tokens.js --network bscTestnet",
@@ -60,8 +68,10 @@
     "deploy:upgradeable:bscTestnet": "npx hardhat run scripts/deploy_upgradeable.js --network bscTestnet",
     "upgrade:upgradeable:sepolia": "npx hardhat run scripts/upgrade_upgradeable.js --network sepolia",
     "upgrade:upgradeable:bscTestnet": "npx hardhat run scripts/upgrade_upgradeable.js --network bscTestnet",
+    "upgrade:pool:bscMainnet": "UPGRADE_POOL=true npx hardhat run scripts/upgrade_upgradeable.js --network bscMainnet",
     "validate:upgradeable:sepolia": "VALIDATE_ONLY=true npx hardhat run scripts/upgrade_upgradeable.js --network sepolia",
-    "validate:upgradeable:bscTestnet": "VALIDATE_ONLY=true npx hardhat run scripts/upgrade_upgradeable.js --network bscTestnet"
+    "validate:upgradeable:bscTestnet": "VALIDATE_ONLY=true npx hardhat run scripts/upgrade_upgradeable.js --network bscTestnet",
+    "validate:pool:bscMainnet": "VALIDATE_ONLY=true UPGRADE_POOL=true npx hardhat run scripts/upgrade_upgradeable.js --network bscMainnet"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.0",

@@ -5,7 +5,8 @@
  *   - Uses real BSC USDT only.
  *   - Does not deploy mock tokens.
  *   - Requires an existing ORBD token address.
- *   - Configures PancakeSwap V2 buy mode by default.
+ *   - Configures PancakeSwap Infinity buy mode when PANCAKE_INFINITY_CL_PATH is set.
+ *   - Falls back to PancakeSwap V2 buy mode when Infinity env values are absent.
  *   - Optionally configures the PancakeSwap V2 ORBD/USDT pair oracle.
  *   - Optionally hands upgrade/admin control to FINAL_ADMIN_ADDRESS.
  *
@@ -19,6 +20,8 @@ const path = require("path");
 const BSC_MAINNET_CHAIN_ID = 56;
 const BSC_USDT = "0x55d398326f99059fF775485246999027B3197955";
 const PANCAKE_V2_ROUTER = "0x10ED43C718714eb63d5aA57B78B54704E256024E";
+const PANCAKE_INFINITY_ROUTER = "0xd9C500DfF816a1Da21A48A732d3498Bf09dc9AEB";
+const PANCAKE_PERMIT2 = "0x31c2F6fcFf4F8759b3Bd5Bf0e1084A055615c768";
 const DEFAULT_POOL_WEIGHTS = [910, 909, 909, 909, 909, 909, 909, 909, 909, 909, 909];
 const DEFAULT_ORACLE_MIN_TWAP_INTERVAL = 24 * 60 * 60;
 const DEFAULT_ORACLE_MAX_AGE = 9 * 24 * 60 * 60;
@@ -82,6 +85,15 @@ function parseUintEnv(name, fallback) {
   return parsed;
 }
 
+function parseUint128Env(name, fallback) {
+  const raw = process.env[name] || fallback;
+  const value = BigInt(raw);
+  if (value < 0n || value > (1n << 128n) - 1n) {
+    throw new Error(`${name} must fit in uint128`);
+  }
+  return value;
+}
+
 function parsePoolWeights() {
   const raw = process.env.POOL_WEIGHTS;
   if (!raw) return DEFAULT_POOL_WEIGHTS;
@@ -111,6 +123,65 @@ function parseSwapPath(usdtAddress, orbdAddress) {
   }
 
   return path.map((item) => ethers.getAddress(item));
+}
+
+function shouldUseInfinityBuy() {
+  return Boolean(process.env.PANCAKE_INFINITY_CL_PATH) || envFlag("ENABLE_PANCAKE_INFINITY_BUY", false);
+}
+
+function parseInfinityPath(usdtAddress, orbdAddress) {
+  const raw = process.env.PANCAKE_INFINITY_CL_PATH;
+  if (!raw) throw new Error("PANCAKE_INFINITY_CL_PATH must be set for Pancake Infinity buy mode");
+
+  const hops = raw.split(";").map((hop, index) => {
+    const parts = hop.split(",").map((item) => item.trim());
+    if (parts.length !== 5) {
+      throw new Error(`PANCAKE_INFINITY_CL_PATH hop ${index + 1} must have 5 comma-separated fields`);
+    }
+
+    const [intermediateCurrencyRaw, feeRaw, hooksRaw, poolManagerRaw, parameters] = parts;
+    if (!ethers.isAddress(intermediateCurrencyRaw)) {
+      throw new Error(`Invalid intermediateCurrency in PANCAKE_INFINITY_CL_PATH hop ${index + 1}`);
+    }
+    if (!ethers.isAddress(hooksRaw)) {
+      throw new Error(`Invalid hooks in PANCAKE_INFINITY_CL_PATH hop ${index + 1}`);
+    }
+    if (!ethers.isAddress(poolManagerRaw)) {
+      throw new Error(`Invalid poolManager in PANCAKE_INFINITY_CL_PATH hop ${index + 1}`);
+    }
+    if (!/^0x[0-9a-fA-F]{64}$/.test(parameters)) {
+      throw new Error(`Invalid parameters bytes32 in PANCAKE_INFINITY_CL_PATH hop ${index + 1}`);
+    }
+
+    const fee = Number(feeRaw);
+    if (!Number.isInteger(fee) || fee < 0 || fee > 1_000_000) {
+      throw new Error(`Invalid fee in PANCAKE_INFINITY_CL_PATH hop ${index + 1}`);
+    }
+
+    return {
+      intermediateCurrency: ethers.getAddress(intermediateCurrencyRaw),
+      fee,
+      hooks: ethers.getAddress(hooksRaw),
+      poolManager: ethers.getAddress(poolManagerRaw),
+      hookData: "0x",
+      parameters,
+    };
+  });
+
+  if (!hops.length) throw new Error("PANCAKE_INFINITY_CL_PATH must include at least one hop");
+
+  let currencyIn = usdtAddress;
+  for (const [index, hop] of hops.entries()) {
+    if (hop.intermediateCurrency === currencyIn) {
+      throw new Error(`PANCAKE_INFINITY_CL_PATH hop ${index + 1} repeats the input currency`);
+    }
+    currencyIn = hop.intermediateCurrency;
+  }
+  if (currencyIn !== orbdAddress) {
+    throw new Error("PANCAKE_INFINITY_CL_PATH must end at ORBD_TOKEN_ADDRESS");
+  }
+
+  return hops;
 }
 
 async function wait(tx, label) {
@@ -187,6 +258,35 @@ async function validatePancakeRouter(router) {
   console.log("Pancake WBNB:", weth);
 }
 
+async function validatePancakeInfinityRoute(usdtAddress, orbdAddress) {
+  const router = optionalAddress("PANCAKE_INFINITY_ROUTER_ADDRESS") || PANCAKE_INFINITY_ROUTER;
+  const permit2 = optionalAddress("PANCAKE_PERMIT2_ADDRESS") || PANCAKE_PERMIT2;
+  const path = parseInfinityPath(usdtAddress, orbdAddress);
+
+  await requireContractCode("Pancake Infinity Universal Router", router);
+  await requireContractCode("Pancake Permit2", permit2);
+
+  for (const hop of path) {
+    await requireContractCode("Pancake Infinity pool manager", hop.poolManager);
+    if (hop.hooks !== ethers.ZeroAddress) {
+      await requireContractCode("Pancake Infinity hook", hop.hooks);
+    }
+    if (hop.intermediateCurrency !== ethers.ZeroAddress) {
+      await requireContractCode("Pancake Infinity path currency", hop.intermediateCurrency);
+    }
+  }
+
+  console.log("Pancake Infinity Universal Router:", router);
+  console.log("Pancake Permit2:", permit2);
+  console.log("Pancake Infinity route:");
+  console.log(`  ${usdtAddress}`);
+  for (const [index, hop] of path.entries()) {
+    console.log(
+      `  hop ${index + 1}: fee=${hop.fee} intermediate=${hop.intermediateCurrency} manager=${hop.poolManager}`
+    );
+  }
+}
+
 async function validatePancakePair(pairAddress, usdtAddress, orbdAddress) {
   if (!pairAddress) return;
 
@@ -224,17 +324,21 @@ async function validatePreflight(usdtAddress, orbdAddress) {
   await validateToken("BSC USDT", usdtAddress, "USDT");
   await validateToken("ORBD token", orbdAddress, "ORBD");
 
-  const router = optionalAddress("PANCAKE_ROUTER_ADDRESS") || PANCAKE_V2_ROUTER;
-  await validatePancakeRouter(router);
+  if (shouldUseInfinityBuy()) {
+    await validatePancakeInfinityRoute(usdtAddress, orbdAddress);
+  } else {
+    const router = optionalAddress("PANCAKE_ROUTER_ADDRESS") || PANCAKE_V2_ROUTER;
+    await validatePancakeRouter(router);
 
-  const swapPath = parseSwapPath(usdtAddress, orbdAddress);
-  if (swapPath[0] !== usdtAddress || swapPath[swapPath.length - 1] !== orbdAddress) {
-    throw new Error("PANCAKE_SWAP_PATH must start with USDT_ADDRESS and end with ORBD_TOKEN_ADDRESS");
+    const swapPath = parseSwapPath(usdtAddress, orbdAddress);
+    if (swapPath[0] !== usdtAddress || swapPath[swapPath.length - 1] !== orbdAddress) {
+      throw new Error("PANCAKE_SWAP_PATH must start with USDT_ADDRESS and end with ORBD_TOKEN_ADDRESS");
+    }
+    for (const tokenAddress of swapPath) {
+      await requireContractCode("Swap path token", tokenAddress);
+    }
+    console.log("Pancake V2 swap path:", swapPath.join(" -> "));
   }
-  for (const tokenAddress of swapPath) {
-    await requireContractCode("Swap path token", tokenAddress);
-  }
-  console.log("Pancake swap path:", swapPath.join(" -> "));
 
   await validatePancakePair(optionalAddress("ORBD_USDT_PAIR_ADDRESS"), usdtAddress, orbdAddress);
 }
@@ -282,6 +386,26 @@ async function configureOracle(pool) {
 }
 
 async function configurePancakeBuy(pool, usdtAddress, orbdAddress) {
+  if (shouldUseInfinityBuy()) {
+    const router = optionalAddress("PANCAKE_INFINITY_ROUTER_ADDRESS") || PANCAKE_INFINITY_ROUTER;
+    const permit2 = optionalAddress("PANCAKE_PERMIT2_ADDRESS") || PANCAKE_PERMIT2;
+    const path = parseInfinityPath(usdtAddress, orbdAddress);
+    const amountOutMinimum = parseUint128Env("PANCAKE_INFINITY_AMOUNT_OUT_MIN", "0");
+    const enabled = envFlag("ENABLE_PANCAKE_INFINITY_BUY", true);
+
+    const tx = await pool.configurePancakeInfinitySwap(router, permit2, path, amountOutMinimum, enabled);
+    await wait(tx, `Pancake Infinity buy mode configured: router ${router}`);
+
+    return {
+      mode: "pancakeInfinity",
+      router,
+      permit2,
+      path,
+      amountOutMinimum: amountOutMinimum.toString(),
+      enabled,
+    };
+  }
+
   const router = optionalAddress("PANCAKE_ROUTER_ADDRESS") || PANCAKE_V2_ROUTER;
   const path = parseSwapPath(usdtAddress, orbdAddress);
   const minOutBps = parseUintEnv("PANCAKE_SWAP_MIN_OUT_BPS", DEFAULT_SWAP_MIN_OUT_BPS);
@@ -290,7 +414,7 @@ async function configurePancakeBuy(pool, usdtAddress, orbdAddress) {
   const tx = await pool.configurePancakeSwap(router, path, minOutBps, enabled);
   await wait(tx, `Pancake buy mode configured: router ${router}`);
 
-  return { router, path, minOutBps, enabled };
+  return { mode: "pancakeV2", router, path, minOutBps, enabled };
 }
 
 async function grantOperationalRoles(pool) {
@@ -465,10 +589,28 @@ async function main() {
   console.log(`USDT_ADDRESS=${usdtAddress}`);
   console.log(`ORBD_TOKEN_ADDRESS=${orbdAddress}`);
   if (oracle.pair) console.log(`ORBD_USDT_PAIR_ADDRESS=${oracle.pair}`);
-  console.log(`PANCAKE_ROUTER_ADDRESS=${pancakeBuy.router}`);
-  console.log(`PANCAKE_SWAP_PATH=${pancakeBuy.path.join(",")}`);
-  console.log(`PANCAKE_SWAP_MIN_OUT_BPS=${pancakeBuy.minOutBps}`);
-  console.log(`ENABLE_PANCAKE_BUY=${pancakeBuy.enabled}`);
+  if (pancakeBuy.mode === "pancakeInfinity") {
+    console.log(`PANCAKE_INFINITY_ROUTER_ADDRESS=${pancakeBuy.router}`);
+    console.log(`PANCAKE_PERMIT2_ADDRESS=${pancakeBuy.permit2}`);
+    console.log(`PANCAKE_INFINITY_AMOUNT_OUT_MIN=${pancakeBuy.amountOutMinimum}`);
+    console.log(`ENABLE_PANCAKE_INFINITY_BUY=${pancakeBuy.enabled}`);
+    console.log(
+      `PANCAKE_INFINITY_CL_PATH=${pancakeBuy.path
+        .map((hop) => [
+          hop.intermediateCurrency,
+          hop.fee,
+          hop.hooks,
+          hop.poolManager,
+          hop.parameters,
+        ].join(","))
+        .join(";")}`
+    );
+  } else {
+    console.log(`PANCAKE_ROUTER_ADDRESS=${pancakeBuy.router}`);
+    console.log(`PANCAKE_SWAP_PATH=${pancakeBuy.path.join(",")}`);
+    console.log(`PANCAKE_SWAP_MIN_OUT_BPS=${pancakeBuy.minOutBps}`);
+    console.log(`ENABLE_PANCAKE_BUY=${pancakeBuy.enabled}`);
+  }
   if (adminHandoff.finalAdmin) console.log(`FINAL_ADMIN_ADDRESS=${adminHandoff.finalAdmin}`);
   console.log(`ARVO_WEEKLY_POOL_ADDRESS=${poolAddress}`);
   console.log(`ARVO_MATRIX_ADDRESS=${matrixAddress}`);

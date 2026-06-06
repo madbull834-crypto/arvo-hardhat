@@ -69,6 +69,84 @@ describe("ARVOWeeklyPool", function () {
     expect((await weeklyPool.getPoolTokenStats(0)).accumulatedOrbd).to.equal(0n);
   });
 
+  it("uses the actual Pancake output even when the configured fallback rate is higher", async function () {
+    const Router = await ethers.getContractFactory("MockPancakeV2Router");
+    const router = await Router.deploy();
+    await router.waitForDeployment();
+
+    const minterRole = await orbd.MINTER_ROLE();
+    await orbd.connect(deployer).grantRole(minterRole, deployer.address);
+    await orbd.mint(await router.getAddress(), ethers.parseUnits("1000", 18));
+
+    await router.setOrbdPerUsdtRate(ethers.parseUnits("2", 18));
+    await weeklyPool.setOrbdRate(ethers.parseUnits("100", 18));
+    await weeklyPool.configurePancakeSwap(
+      await router.getAddress(),
+      [await usdt.getAddress(), await orbd.getAddress()],
+      9500,
+      true
+    );
+
+    await seedQualifiedPool();
+
+    const pool0 = await weeklyPool.getPoolTokenStats(0);
+    expect(pool0.accumulatedUsdt).to.equal(ethers.parseUnits("0.364", 18));
+    expect(pool0.accumulatedOrbd).to.equal(ethers.parseUnits("0.728", 18));
+  });
+
+  it("buys ORBD through Pancake Infinity CL route using Pancake output", async function () {
+    const Permit2 = await ethers.getContractFactory("MockPermit2");
+    const permit2 = await Permit2.deploy();
+    await permit2.waitForDeployment();
+
+    const Router = await ethers.getContractFactory("MockPancakeInfinityUniversalRouter");
+    const router = await Router.deploy();
+    await router.waitForDeployment();
+
+    const minterRole = await orbd.MINTER_ROLE();
+    await orbd.connect(deployer).grantRole(minterRole, deployer.address);
+    await orbd.mint(await router.getAddress(), ethers.parseUnits("1000", 18));
+
+    await router.setOrbdPerUsdtRate(ethers.parseUnits("2.25", 18));
+    await weeklyPool.setOrbdRate(ethers.parseUnits("100", 18));
+
+    const nativeBnb = ethers.ZeroAddress;
+    const poolManager = "0xa0FfB9c1CE1Fe56963B0321B32E7A0302114058b";
+    const hooks = ethers.ZeroAddress;
+    const parameters = "0x0000000000000000000000000000000000000000000000000000000000010000";
+    await weeklyPool.configurePancakeInfinitySwap(
+      await router.getAddress(),
+      await permit2.getAddress(),
+      [
+        {
+          intermediateCurrency: nativeBnb,
+          fee: 3355,
+          hooks,
+          poolManager,
+          hookData: "0x",
+          parameters,
+        },
+        {
+          intermediateCurrency: await orbd.getAddress(),
+          fee: 3355,
+          hooks,
+          poolManager,
+          hookData: "0x",
+          parameters,
+        },
+      ],
+      0,
+      true
+    );
+
+    await seedQualifiedPool();
+
+    const pool0 = await weeklyPool.getPoolTokenStats(0);
+    expect(pool0.accumulatedUsdt).to.equal(ethers.parseUnits("0.364", 18));
+    expect(pool0.accumulatedOrbd).to.equal(ethers.parseUnits("0.819", 18));
+    expect(await weeklyPool.pancakeInfinitySwapEnabled()).to.equal(true);
+  });
+
   describe("PancakeSwap ORBD/USDT TWAP oracle", function () {
     async function deployPair({ usdtIsToken0 = true } = {}) {
       const Pair = await ethers.getContractFactory("MockPancakeV2Pair");

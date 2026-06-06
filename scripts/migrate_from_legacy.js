@@ -91,7 +91,38 @@ function step(msg) { console.log(`\n${"─".repeat(60)}\n  ${msg}`); }
 
 async function confirm(tx, label) {
   log(`  TX: ${tx.hash}`);
-  const receipt = await tx.wait(1);
+
+  const timeoutMinutes = Number(process.env.TX_WAIT_TIMEOUT_MINUTES || 30);
+  const pollSeconds = Number(process.env.TX_WAIT_POLL_SECONDS || 5);
+  const deadline = Date.now() + timeoutMinutes * 60_000;
+  let lastBlock = 0;
+  let receipt = null;
+
+  while (Date.now() < deadline) {
+    receipt = await ethers.provider.getTransactionReceipt(tx.hash);
+    if (receipt) break;
+
+    const block = await ethers.provider.getBlockNumber();
+    if (block !== lastBlock) {
+      lastBlock = block;
+      log(`  Waiting for mining... latest block ${block}`);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, pollSeconds * 1000));
+  }
+
+  if (!receipt) {
+    throw new Error(
+      `${label} was not mined within ${timeoutMinutes} minutes.\n` +
+      `Transaction hash: ${tx.hash}\n` +
+      "Check the hash on the block explorer before rerunning migration."
+    );
+  }
+
+  if (receipt.status !== 1) {
+    throw new Error(`${label} reverted in block ${receipt.blockNumber}. Transaction hash: ${tx.hash}`);
+  }
+
   log(`  ${label} — block ${receipt.blockNumber} ✓`);
   return receipt;
 }
@@ -102,13 +133,24 @@ function chunk(arr, size) {
   return chunks;
 }
 
+function txOptions() {
+  const options = {};
+  if (process.env.TX_GAS_PRICE_GWEI) {
+    options.gasPrice = ethers.parseUnits(process.env.TX_GAS_PRICE_GWEI, "gwei");
+  }
+  if (process.env.TX_GAS_LIMIT) {
+    options.gasLimit = BigInt(process.env.TX_GAS_LIMIT);
+  }
+  return options;
+}
+
 // ─── Migration steps ──────────────────────────────────────────────────────────
 
 async function step1_pause(matrix, signer) {
   step("1. Pause registrations");
   const paused = await matrix.paused();
   if (paused) { log("  Already paused — skipping"); return; }
-  await confirm(await matrix.connect(signer).pause(), "Contract paused");
+  await confirm(await matrix.connect(signer).pause(txOptions()), "Contract paused");
 }
 
 async function step2_migrateUsers(matrix, signer) {
@@ -132,7 +174,7 @@ async function step2_migrateUsers(matrix, signer) {
       lockedFunds:   u.lockedFunds,
     }));
     await confirm(
-      await matrix.connect(signer).migrateUsers(batch),
+      await matrix.connect(signer).migrateUsers(batch, txOptions()),
       `Batch ${i + 1}/${batches.length} (${batch.length} users)`
     );
   }
@@ -161,7 +203,8 @@ async function step2b_migrateSimpleUsers(matrix, signer) {
         accountBatches[i],
         referrerBatches[i],
         levelBatches[i],
-        directBatches[i]
+        directBatches[i],
+        txOptions()
       ),
       `Simple batch ${i + 1}/${accountBatches.length}`
     );
@@ -177,7 +220,7 @@ async function step3_migratePlacementQueue(matrix, signer) {
 
   log(`  Queue length: ${BFS_QUEUE_ORDER.length}, head: ${QUEUE_HEAD}`);
   await confirm(
-    await matrix.connect(signer).migratePlacementQueue(BFS_QUEUE_ORDER, QUEUE_HEAD),
+    await matrix.connect(signer).migratePlacementQueue(BFS_QUEUE_ORDER, QUEUE_HEAD, txOptions()),
     `Placement queue migrated (head=${QUEUE_HEAD})`
   );
 }
@@ -198,7 +241,8 @@ async function step4_migrateAccounting(matrix, signer) {
         batch.map(r => r.levelIncome),
         batch.map(r => r.skippedIncome),
         batch.map(r => r.withdrawn),
-        true  // replace=true: set values (not add). Use false if users already have on-chain activity.
+        true,  // replace=true: set values (not add). Use false if users already have on-chain activity.
+        txOptions()
       ),
       `Accounting batch ${i + 1}/${batches.length}`
     );
@@ -212,7 +256,7 @@ async function step5_migrateDirectReferrals(matrix, signer) {
   for (const { referrer, referrals } of LEGACY_DIRECT_REFERRALS) {
     if (!referrals.length) continue;
     await confirm(
-      await matrix.connect(signer).migrateDirectReferrals(referrer, referrals, true),
+      await matrix.connect(signer).migrateDirectReferrals(referrer, referrals, true, txOptions()),
       `Referrals set for ${referrer} (${referrals.length} entries)`
     );
   }
@@ -221,14 +265,14 @@ async function step5_migrateDirectReferrals(matrix, signer) {
 async function step6_closeMigration(matrix, signer) {
   step("6. Close migration permanently");
   await confirm(
-    await matrix.connect(signer).closeMigration(),
+    await matrix.connect(signer).closeMigration(txOptions()),
     "Migration closed forever — no further imports possible"
   );
 }
 
 async function step7_unpause(matrix, signer) {
   step("7. Unpause registrations");
-  await confirm(await matrix.connect(signer).unpause(), "Contract unpaused — registrations open");
+  await confirm(await matrix.connect(signer).unpause(txOptions()), "Contract unpaused — registrations open");
 }
 
 async function verifyState(matrix) {

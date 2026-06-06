@@ -764,6 +764,515 @@
           ]
         }
       }
+    },
+    "9a8d6c4159eae89e2b4f569e502d16dd0415fd5c20c9c625241ade464e505884": {
+      "address": "0x89Ed227a2d833208fB3Da3f67b3C12A1A5338968",
+      "txHash": "0xddeb49c8326fd677fa420383918182a98414d71e4d68fc07e0d9163c2ecd8b1c",
+      "layout": {
+        "solcVersion": "0.8.22",
+        "storage": [
+          {
+            "label": "_status",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint256",
+            "contract": "ReentrancyGuardUpgradeableLocal",
+            "src": "contracts/utils/ReentrancyGuardUpgradeableLocal.sol:10"
+          },
+          {
+            "label": "usdt",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_contract(IERC20)1476",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:94"
+          },
+          {
+            "label": "orbd",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_contract(IORBDToken)5824",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:95"
+          },
+          {
+            "label": "poolWeights",
+            "offset": 0,
+            "slot": "3",
+            "type": "t_array(t_uint256)11_storage",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:100"
+          },
+          {
+            "label": "poolTargets",
+            "offset": 0,
+            "slot": "14",
+            "type": "t_array(t_uint256)11_storage",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:101"
+          },
+          {
+            "label": "orbdPerUsdtRate",
+            "offset": 0,
+            "slot": "25",
+            "type": "t_uint256",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:115"
+          },
+          {
+            "label": "pancakePair",
+            "offset": 0,
+            "slot": "26",
+            "type": "t_contract(IPancakeV2Pair)2678",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:119"
+          },
+          {
+            "label": "pancakeToken0",
+            "offset": 0,
+            "slot": "27",
+            "type": "t_address",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:120"
+          },
+          {
+            "label": "pancakeOracleEnabled",
+            "offset": 20,
+            "slot": "27",
+            "type": "t_bool",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:120"
+          },
+          {
+            "label": "pancakeOracleReady",
+            "offset": 21,
+            "slot": "27",
+            "type": "t_bool",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:121"
+          },
+          {
+            "label": "minTwapInterval",
+            "offset": 0,
+            "slot": "28",
+            "type": "t_uint256",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:123"
+          },
+          {
+            "label": "maxOracleAge",
+            "offset": 0,
+            "slot": "29",
+            "type": "t_uint256",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:123"
+          },
+          {
+            "label": "maxRateChangeBps",
+            "offset": 0,
+            "slot": "30",
+            "type": "t_uint256",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:124"
+          },
+          {
+            "label": "price0CumulativeLast",
+            "offset": 0,
+            "slot": "31",
+            "type": "t_uint256",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:125"
+          },
+          {
+            "label": "price1CumulativeLast",
+            "offset": 0,
+            "slot": "32",
+            "type": "t_uint256",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:126"
+          },
+          {
+            "label": "lastOracleObservationTimestamp",
+            "offset": 0,
+            "slot": "33",
+            "type": "t_uint32",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:126"
+          },
+          {
+            "label": "lastOracleRateTimestamp",
+            "offset": 0,
+            "slot": "34",
+            "type": "t_uint256",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:129"
+          },
+          {
+            "label": "weeklyAccumulated",
+            "offset": 0,
+            "slot": "35",
+            "type": "t_array(t_uint256)11_storage",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:133"
+          },
+          {
+            "label": "lastDistributionTimestamp",
+            "offset": 0,
+            "slot": "46",
+            "type": "t_uint256",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:135"
+          },
+          {
+            "label": "lastPoolDistributionTimestamp",
+            "offset": 0,
+            "slot": "47",
+            "type": "t_array(t_uint256)11_storage",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:135"
+          },
+          {
+            "label": "totalContributed",
+            "offset": 0,
+            "slot": "58",
+            "type": "t_uint256",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:137"
+          },
+          {
+            "label": "memberships",
+            "offset": 0,
+            "slot": "59",
+            "type": "t_mapping(t_address,t_mapping(t_uint8,t_struct(PoolMembership)2852_storage))",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:145"
+          },
+          {
+            "label": "_poolMembers",
+            "offset": 0,
+            "slot": "60",
+            "type": "t_mapping(t_uint8,t_array(t_address)dyn_storage)",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:152"
+          },
+          {
+            "label": "pancakeRouter",
+            "offset": 0,
+            "slot": "61",
+            "type": "t_contract(IPancakeV2Router)2704",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:202"
+          },
+          {
+            "label": "pancakeSwapEnabled",
+            "offset": 20,
+            "slot": "61",
+            "type": "t_bool",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:204"
+          },
+          {
+            "label": "pancakeSwapMinOutBps",
+            "offset": 0,
+            "slot": "62",
+            "type": "t_uint256",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:205"
+          },
+          {
+            "label": "pancakeSwapPath",
+            "offset": 0,
+            "slot": "63",
+            "type": "t_array(t_address)dyn_storage",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:206"
+          },
+          {
+            "label": "weeklyOrbdAccumulated",
+            "offset": 0,
+            "slot": "64",
+            "type": "t_array(t_uint256)11_storage",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:210"
+          },
+          {
+            "label": "pancakeInfinityRouter",
+            "offset": 0,
+            "slot": "75",
+            "type": "t_contract(IPancakeUniversalRouter)2715",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:213"
+          },
+          {
+            "label": "pancakePermit2",
+            "offset": 0,
+            "slot": "76",
+            "type": "t_contract(IPermit2Allowance)2727",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:216"
+          },
+          {
+            "label": "pancakeInfinitySwapEnabled",
+            "offset": 20,
+            "slot": "76",
+            "type": "t_bool",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:217"
+          },
+          {
+            "label": "pancakeInfinityAmountOutMinimum",
+            "offset": 0,
+            "slot": "77",
+            "type": "t_uint128",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:219"
+          },
+          {
+            "label": "_pancakeInfinityClPath",
+            "offset": 0,
+            "slot": "78",
+            "type": "t_array(t_struct(InfinityCLPathKey)2740_storage)dyn_storage",
+            "contract": "ARVOWeeklyPool",
+            "src": "contracts/core/ARVOWeeklyPool.sol:220"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_bytes32": {
+            "label": "bytes32",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_bool)": {
+            "label": "mapping(address => bool)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_struct(RoleData)24_storage)": {
+            "label": "mapping(bytes32 => struct AccessControlUpgradeable.RoleData)",
+            "numberOfBytes": "32"
+          },
+          "t_struct(AccessControlStorage)34_storage": {
+            "label": "struct AccessControlUpgradeable.AccessControlStorage",
+            "members": [
+              {
+                "label": "_roles",
+                "type": "t_mapping(t_bytes32,t_struct(RoleData)24_storage)",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(InitializableStorage)453_storage": {
+            "label": "struct Initializable.InitializableStorage",
+            "members": [
+              {
+                "label": "_initialized",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_initializing",
+                "type": "t_bool",
+                "offset": 8,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(RoleData)24_storage": {
+            "label": "struct AccessControlUpgradeable.RoleData",
+            "members": [
+              {
+                "label": "hasRole",
+                "type": "t_mapping(t_address,t_bool)",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "adminRole",
+                "type": "t_bytes32",
+                "offset": 0,
+                "slot": "1"
+              }
+            ],
+            "numberOfBytes": "64"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_array(t_address)dyn_storage": {
+            "label": "address[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_struct(InfinityCLPathKey)2740_storage)dyn_storage": {
+            "label": "struct InfinityCLPathKey[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_uint256)11_storage": {
+            "label": "uint256[11]",
+            "numberOfBytes": "352"
+          },
+          "t_bytes_storage": {
+            "label": "bytes",
+            "numberOfBytes": "32"
+          },
+          "t_contract(IERC20)1476": {
+            "label": "contract IERC20",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IORBDToken)5824": {
+            "label": "contract IORBDToken",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IPancakeUniversalRouter)2715": {
+            "label": "contract IPancakeUniversalRouter",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IPancakeV2Pair)2678": {
+            "label": "contract IPancakeV2Pair",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IPancakeV2Router)2704": {
+            "label": "contract IPancakeV2Router",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IPermit2Allowance)2727": {
+            "label": "contract IPermit2Allowance",
+            "numberOfBytes": "20"
+          },
+          "t_mapping(t_address,t_mapping(t_uint8,t_struct(PoolMembership)2852_storage))": {
+            "label": "mapping(address => mapping(uint8 => struct ARVOWeeklyPool.PoolMembership))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint8,t_array(t_address)dyn_storage)": {
+            "label": "mapping(uint8 => address[])",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint8,t_struct(PoolMembership)2852_storage)": {
+            "label": "mapping(uint8 => struct ARVOWeeklyPool.PoolMembership)",
+            "numberOfBytes": "32"
+          },
+          "t_struct(InfinityCLPathKey)2740_storage": {
+            "label": "struct InfinityCLPathKey",
+            "members": [
+              {
+                "label": "intermediateCurrency",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "fee",
+                "type": "t_uint24",
+                "offset": 20,
+                "slot": "0"
+              },
+              {
+                "label": "hooks",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "poolManager",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "2"
+              },
+              {
+                "label": "hookData",
+                "type": "t_bytes_storage",
+                "offset": 0,
+                "slot": "3"
+              },
+              {
+                "label": "parameters",
+                "type": "t_bytes32",
+                "offset": 0,
+                "slot": "4"
+              }
+            ],
+            "numberOfBytes": "160"
+          },
+          "t_struct(PoolMembership)2852_storage": {
+            "label": "struct ARVOWeeklyPool.PoolMembership",
+            "members": [
+              {
+                "label": "isActive",
+                "type": "t_bool",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "totalReceivedUsdt",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "1"
+              }
+            ],
+            "numberOfBytes": "64"
+          },
+          "t_uint128": {
+            "label": "uint128",
+            "numberOfBytes": "16"
+          },
+          "t_uint24": {
+            "label": "uint24",
+            "numberOfBytes": "3"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint32": {
+            "label": "uint32",
+            "numberOfBytes": "4"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          }
+        },
+        "namespaces": {
+          "erc7201:openzeppelin.storage.AccessControl": [
+            {
+              "contract": "AccessControlUpgradeable",
+              "label": "_roles",
+              "type": "t_mapping(t_bytes32,t_struct(RoleData)24_storage)",
+              "src": "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol:61",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Initializable": [
+            {
+              "contract": "Initializable",
+              "label": "_initialized",
+              "type": "t_uint64",
+              "src": "@openzeppelin/contracts/proxy/utils/Initializable.sol:69",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "Initializable",
+              "label": "_initializing",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts/proxy/utils/Initializable.sol:73",
+              "offset": 8,
+              "slot": "0"
+            }
+          ]
+        }
+      }
     }
   }
 }

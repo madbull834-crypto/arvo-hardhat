@@ -69,14 +69,56 @@ function step(msg) { console.log(`\n${"─".repeat(60)}\n  ${msg}`); }
 
 async function confirm(tx, label) {
   log(`  TX: ${tx.hash}`);
-  const r = await tx.wait(1);
-  log(`  ${label} — block ${r.blockNumber} ✓`);
+
+  const timeoutMinutes = Number(process.env.TX_WAIT_TIMEOUT_MINUTES || 30);
+  const pollSeconds = Number(process.env.TX_WAIT_POLL_SECONDS || 5);
+  const deadline = Date.now() + timeoutMinutes * 60_000;
+  let lastBlock = 0;
+  let receipt = null;
+
+  while (Date.now() < deadline) {
+    receipt = await ethers.provider.getTransactionReceipt(tx.hash);
+    if (receipt) break;
+
+    const block = await ethers.provider.getBlockNumber();
+    if (block !== lastBlock) {
+      lastBlock = block;
+      log(`  Waiting for mining... latest block ${block}`);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, pollSeconds * 1000));
+  }
+
+  if (!receipt) {
+    throw new Error(
+      `${label} was not mined within ${timeoutMinutes} minutes.\n` +
+      `Transaction hash: ${tx.hash}\n` +
+      "Check the hash on the block explorer before rerunning migration."
+    );
+  }
+
+  if (receipt.status !== 1) {
+    throw new Error(`${label} reverted in block ${receipt.blockNumber}. Transaction hash: ${tx.hash}`);
+  }
+
+  log(`  ${label} — block ${receipt.blockNumber} ✓`);
 }
 
 function chunk(arr, size) {
   const out = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
+}
+
+function txOptions() {
+  const options = {};
+  if (process.env.TX_GAS_PRICE_GWEI) {
+    options.gasPrice = ethers.parseUnits(process.env.TX_GAS_PRICE_GWEI, "gwei");
+  }
+  if (process.env.TX_GAS_LIMIT) {
+    options.gasLimit = BigInt(process.env.TX_GAS_LIMIT);
+  }
+  return options;
 }
 
 // ─── Step 1: Read all UserRegistered events from old contract ─────────────────
@@ -204,7 +246,7 @@ function validateUsers(users, genesisAddress) {
 async function pauseNew(matrix, signer) {
   step("Pausing new contract…");
   if (await matrix.paused()) { log("  Already paused ✓"); return; }
-  await confirm(await matrix.connect(signer).pause(), "New contract paused");
+  await confirm(await matrix.connect(signer).pause(txOptions()), "New contract paused");
 }
 
 // ─── Step 5: Migrate users ────────────────────────────────────────────────────
@@ -238,7 +280,7 @@ async function migrateUsers(users, matrix, signer, genesisAddress) {
     const directs   = batch.map(u => u.directCount);
 
     await confirm(
-      await matrix.connect(signer).migrateSimpleUsers(accounts, referrers, levels, directs),
+      await matrix.connect(signer).migrateSimpleUsers(accounts, referrers, levels, directs, txOptions()),
       `Batch ${i + 1}/${batches.length} — ${batch.length} users (${accounts[0]} … ${accounts[accounts.length - 1]})`
     );
   }
@@ -247,8 +289,8 @@ async function migrateUsers(users, matrix, signer, genesisAddress) {
 // ─── Step 6: Close and unpause ────────────────────────────────────────────────
 async function closeAndUnpause(matrix, signer) {
   step("Closing migration and unpausing…");
-  await confirm(await matrix.connect(signer).closeMigration(), "Migration closed forever");
-  await confirm(await matrix.connect(signer).unpause(), "New contract unpaused — registrations open");
+  await confirm(await matrix.connect(signer).closeMigration(txOptions()), "Migration closed forever");
+  await confirm(await matrix.connect(signer).unpause(txOptions()), "New contract unpaused — registrations open");
 }
 
 // ─── Step 7: Verify ───────────────────────────────────────────────────────────

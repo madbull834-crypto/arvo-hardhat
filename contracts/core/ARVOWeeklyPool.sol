@@ -37,6 +37,30 @@ interface IPancakeV2Router {
     ) external;
 }
 
+interface IPancakeUniversalRouter {
+    function execute(bytes calldata commands, bytes[] calldata inputs, uint256 deadline) external payable;
+}
+
+interface IPermit2Allowance {
+    function approve(address token, address spender, uint160 amount, uint48 expiration) external;
+}
+
+struct InfinityCLPathKey {
+    address intermediateCurrency;
+    uint24 fee;
+    address hooks;
+    address poolManager;
+    bytes hookData;
+    bytes32 parameters;
+}
+
+struct InfinityCLExactInputParams {
+    address currencyIn;
+    InfinityCLPathKey[] path;
+    uint128 amountIn;
+    uint128 amountOutMinimum;
+}
+
 /// @title ARVOWeeklyPool — 11-pool weighted weekly ORBD distribution
 /// @notice $2 USDT from every registration is split across 11 pools by weight.
 ///         In production mode the pool buys ORBD from PancakeSwap and distributes
@@ -123,6 +147,9 @@ contract ARVOWeeklyPool is Initializable, AccessControlUpgradeable, UUPSUpgradea
     error InvalidSwapPath();
     error SlippageTooHigh();
     error SwapFailed();
+    error InvalidPermit2();
+    error InvalidInfinityPath();
+    error AmountTooLarge();
 
     // ─── Events ───────────────────────────────────────────────────
     event PoolContribution(address indexed member, uint256 totalAmount);
@@ -143,6 +170,13 @@ contract ARVOWeeklyPool is Initializable, AccessControlUpgradeable, UUPSUpgradea
     event PancakeSwapConfigured(address indexed router, uint256 minOutBps, bool enabled);
     event PancakeSwapEnabled(bool enabled);
     event OrbdPurchased(uint256 usdtAmount, uint256 orbdReceived);
+    event PancakeInfinitySwapConfigured(
+        address indexed universalRouter,
+        address indexed permit2,
+        uint128 amountOutMinimum,
+        bool enabled
+    );
+    event PancakeInfinityPathSet(uint256 hops);
 
     // ─── PancakeSwap Buy Configuration ────────────────────────────
     IPancakeV2Router public pancakeRouter;
@@ -152,6 +186,20 @@ contract ARVOWeeklyPool is Initializable, AccessControlUpgradeable, UUPSUpgradea
 
     /// @notice Purchased ORBD accumulated per pool for weekly distribution.
     uint256[POOL_COUNT] public weeklyOrbdAccumulated;
+
+    // ─── PancakeSwap Infinity / v4 Buy Configuration ─────────────
+    /// @dev Pancake Infinity Universal Router. BSC mainnet: 0xd9C500DfF816a1Da21A48A732d3498Bf09dc9AEB.
+    IPancakeUniversalRouter public pancakeInfinityRouter;
+    /// @dev Permit2 used by Universal Router to pull USDT from this contract.
+    IPermit2Allowance public pancakePermit2;
+    bool public pancakeInfinitySwapEnabled;
+    uint128 public pancakeInfinityAmountOutMinimum;
+    InfinityCLPathKey[] private _pancakeInfinityClPath;
+
+    uint8 private constant PANCAKE_COMMAND_INFI_SWAP = 0x10;
+    uint8 private constant PANCAKE_ACTION_CL_SWAP_EXACT_IN = 0x07;
+    uint8 private constant PANCAKE_ACTION_SETTLE_ALL = 0x0c;
+    uint8 private constant PANCAKE_ACTION_TAKE_ALL = 0x0f;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -357,6 +405,72 @@ contract ARVOWeeklyPool is Initializable, AccessControlUpgradeable, UUPSUpgradea
         emit PancakeSwapEnabled(enabled);
     }
 
+    /// @notice Configure PancakeSwap Infinity/v4 CL exact-input routing.
+    /// @dev This uses Pancake Universal Router command INFI_SWAP with CL_SWAP_EXACT_IN.
+    ///      For USDT -> BNB -> ORBD, pass two hops:
+    ///      1) intermediateCurrency = native BNB (address(0)), with the USDT/BNB CL pool fee/hooks/manager/parameters
+    ///      2) intermediateCurrency = ORBD, with the BNB/ORBD CL pool fee/hooks/manager/parameters
+    ///      The contract approves Permit2 here so the router can pull USDT during swaps.
+    function configurePancakeInfinitySwap(
+        address universalRouter_,
+        address permit2_,
+        InfinityCLPathKey[] calldata path_,
+        uint128 amountOutMinimum_,
+        bool enabled_
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (universalRouter_ == address(0)) revert InvalidRouter();
+        if (permit2_ == address(0)) revert InvalidPermit2();
+        _validateInfinityPath(path_);
+
+        pancakeInfinityRouter = IPancakeUniversalRouter(universalRouter_);
+        pancakePermit2 = IPermit2Allowance(permit2_);
+        pancakeInfinityAmountOutMinimum = amountOutMinimum_;
+        pancakeInfinitySwapEnabled = enabled_;
+        pancakeSwapEnabled = enabled_;
+
+        delete _pancakeInfinityClPath;
+        for (uint256 i = 0; i < path_.length; i++) {
+            _pancakeInfinityClPath.push(path_[i]);
+        }
+
+        usdt.forceApprove(permit2_, type(uint256).max);
+        IPermit2Allowance(permit2_).approve(
+            address(usdt),
+            universalRouter_,
+            type(uint160).max,
+            type(uint48).max
+        );
+
+        emit PancakeInfinityPathSet(path_.length);
+        emit PancakeInfinitySwapConfigured(universalRouter_, permit2_, amountOutMinimum_, enabled_);
+        emit PancakeSwapEnabled(enabled_);
+    }
+
+    function setPancakeInfinitySwapEnabled(bool enabled) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (enabled && (address(pancakeInfinityRouter) == address(0) || _pancakeInfinityClPath.length == 0)) {
+            revert InvalidRouter();
+        }
+        pancakeInfinitySwapEnabled = enabled;
+        pancakeSwapEnabled = enabled;
+        emit PancakeInfinitySwapConfigured(
+            address(pancakeInfinityRouter),
+            address(pancakePermit2),
+            pancakeInfinityAmountOutMinimum,
+            enabled
+        );
+        emit PancakeSwapEnabled(enabled);
+    }
+
+    function setPancakeInfinityAmountOutMinimum(uint128 amountOutMinimum) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        pancakeInfinityAmountOutMinimum = amountOutMinimum;
+        emit PancakeInfinitySwapConfigured(
+            address(pancakeInfinityRouter),
+            address(pancakePermit2),
+            amountOutMinimum,
+            pancakeInfinitySwapEnabled
+        );
+    }
+
     /// @notice Update ORBD/USDT conversion rate from the configured PancakeSwap TWAP.
     /// @return newRate ORBD raw units per 1 USDT raw unit, scaled by 1e18.
     function updateOrbdRateFromPancake()
@@ -499,6 +613,21 @@ contract ARVOWeeklyPool is Initializable, AccessControlUpgradeable, UUPSUpgradea
         );
     }
 
+    function getPancakeInfinityPath() external view returns (InfinityCLPathKey[] memory path) {
+        path = new InfinityCLPathKey[](_pancakeInfinityClPath.length);
+        for (uint256 i = 0; i < _pancakeInfinityClPath.length; i++) {
+            InfinityCLPathKey storage source = _pancakeInfinityClPath[i];
+            path[i] = InfinityCLPathKey({
+                intermediateCurrency: source.intermediateCurrency,
+                fee: source.fee,
+                hooks: source.hooks,
+                poolManager: source.poolManager,
+                hookData: source.hookData,
+                parameters: source.parameters
+            });
+        }
+    }
+
     // ─── Internal ─────────────────────────────────────────────────
 
     function _enforceDistributionInterval(uint256 lastTimestamp) internal view {
@@ -606,6 +735,24 @@ contract ARVOWeeklyPool is Initializable, AccessControlUpgradeable, UUPSUpgradea
     }
 
     function _buyOrbdAndAllocate(uint256 usdtAmount) internal {
+        uint256 received = pancakeInfinitySwapEnabled
+            ? _buyOrbdViaPancakeInfinity(usdtAmount)
+            : _buyOrbdViaPancakeV2(usdtAmount);
+        if (received == 0) revert SwapFailed();
+
+        uint256 allocated;
+        for (uint8 i = 0; i < POOL_COUNT; i++) {
+            uint256 share = i == POOL_COUNT - 1
+                ? received - allocated
+                : (received * poolWeights[i]) / 10_000;
+            weeklyOrbdAccumulated[i] += share;
+            allocated += share;
+        }
+
+        emit OrbdPurchased(usdtAmount, received);
+    }
+
+    function _buyOrbdViaPancakeV2(uint256 usdtAmount) internal returns (uint256 received) {
         if (address(pancakeRouter) == address(0) || pancakeSwapPath.length < 2) revert InvalidRouter();
 
         address[] memory path = _swapPath();
@@ -625,19 +772,62 @@ contract ARVOWeeklyPool is Initializable, AccessControlUpgradeable, UUPSUpgradea
             block.timestamp + 900
         );
 
-        uint256 received = IERC20(address(orbd)).balanceOf(address(this)) - beforeBalance;
-        if (received == 0) revert SwapFailed();
+        received = IERC20(address(orbd)).balanceOf(address(this)) - beforeBalance;
+    }
 
-        uint256 allocated;
-        for (uint8 i = 0; i < POOL_COUNT; i++) {
-            uint256 share = i == POOL_COUNT - 1
-                ? received - allocated
-                : (received * poolWeights[i]) / 10_000;
-            weeklyOrbdAccumulated[i] += share;
-            allocated += share;
+    function _buyOrbdViaPancakeInfinity(uint256 usdtAmount) internal returns (uint256 received) {
+        if (address(pancakeInfinityRouter) == address(0)) revert InvalidRouter();
+        if (address(pancakePermit2) == address(0)) revert InvalidPermit2();
+        if (_pancakeInfinityClPath.length == 0) revert InvalidInfinityPath();
+        if (usdtAmount > type(uint128).max) revert AmountTooLarge();
+
+        uint256 beforeBalance = IERC20(address(orbd)).balanceOf(address(this));
+        bytes memory commands = abi.encodePacked(bytes1(PANCAKE_COMMAND_INFI_SWAP));
+        bytes[] memory inputs = new bytes[](1);
+        inputs[0] = _encodePancakeInfinityClExactInput(
+            uint128(usdtAmount),
+            pancakeInfinityAmountOutMinimum
+        );
+
+        pancakeInfinityRouter.execute(commands, inputs, block.timestamp + 900);
+
+        received = IERC20(address(orbd)).balanceOf(address(this)) - beforeBalance;
+    }
+
+    function _encodePancakeInfinityClExactInput(uint128 amountIn, uint128 amountOutMinimum)
+        internal
+        view
+        returns (bytes memory)
+    {
+        InfinityCLPathKey[] memory path = new InfinityCLPathKey[](_pancakeInfinityClPath.length);
+        for (uint256 i = 0; i < _pancakeInfinityClPath.length; i++) {
+            InfinityCLPathKey storage source = _pancakeInfinityClPath[i];
+            path[i] = InfinityCLPathKey({
+                intermediateCurrency: source.intermediateCurrency,
+                fee: source.fee,
+                hooks: source.hooks,
+                poolManager: source.poolManager,
+                hookData: source.hookData,
+                parameters: source.parameters
+            });
         }
 
-        emit OrbdPurchased(usdtAmount, received);
+        bytes memory actions = new bytes(3);
+        actions[0] = bytes1(PANCAKE_ACTION_CL_SWAP_EXACT_IN);
+        actions[1] = bytes1(PANCAKE_ACTION_SETTLE_ALL);
+        actions[2] = bytes1(PANCAKE_ACTION_TAKE_ALL);
+
+        bytes[] memory params = new bytes[](3);
+        params[0] = abi.encode(InfinityCLExactInputParams({
+            currencyIn: address(usdt),
+            path: path,
+            amountIn: amountIn,
+            amountOutMinimum: amountOutMinimum
+        }));
+        params[1] = abi.encode(address(usdt), type(uint256).max);
+        params[2] = abi.encode(address(orbd), uint256(amountOutMinimum));
+
+        return abi.encode(actions, params);
     }
 
     function _swapPath() internal view returns (address[] memory path) {
@@ -645,6 +835,19 @@ contract ARVOWeeklyPool is Initializable, AccessControlUpgradeable, UUPSUpgradea
         for (uint256 i = 0; i < pancakeSwapPath.length; i++) {
             path[i] = pancakeSwapPath[i];
         }
+    }
+
+    function _validateInfinityPath(InfinityCLPathKey[] calldata path_) internal view {
+        if (path_.length == 0) revert InvalidInfinityPath();
+
+        address currencyIn = address(usdt);
+        for (uint256 i = 0; i < path_.length; i++) {
+            if (path_[i].poolManager == address(0)) revert InvalidInfinityPath();
+            if (path_[i].intermediateCurrency == currencyIn) revert InvalidInfinityPath();
+            currencyIn = path_[i].intermediateCurrency;
+        }
+
+        if (currencyIn != address(orbd)) revert InvalidInfinityPath();
     }
 
     function _distributePool(uint8 poolId) internal {
