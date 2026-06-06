@@ -401,10 +401,11 @@ async function refresh() {
       }))
     ]);
 
+    const immediateTreeMembers = await queryImmediateTreeMembers(state.account, tree);
     const directReferralMembers = await queryDirectReferralMembers(directReferralAddresses, state.account, tree);
     const mergedTreeMembers = normalizeSponsorTeamMembers(
       state.account,
-      mergeTeamMembers(treeMembers, directReferralMembers)
+      mergeTeamMembers(treeMembers, immediateTreeMembers, directReferralMembers)
     );
 
     state.data = {
@@ -622,6 +623,38 @@ function queryDirectReferralMembers(addresses, root, rootTree = null) {
         placementParent: tree.parent && tree.parent !== ZERO ? tree.parent : root,
         side: isPlacedUnderRoot ? sideFromTree(rootTree, address, "Referral") : "Referral",
         depth: isPlacedUnderRoot ? 1 : 1,
+        info,
+        tree,
+      };
+    } catch {
+      return null;
+    }
+  })).then((members) => members.filter(Boolean));
+}
+
+function queryImmediateTreeMembers(root, rootTree = null) {
+  if (!rootTree) return Promise.resolve([]);
+
+  const children = [
+    { address: rootTree.leftChild, side: "Left" },
+    { address: rootTree.rightChild, side: "Right" },
+  ].filter((child) => child.address && child.address !== ZERO);
+
+  return Promise.all(children.map(async (child) => {
+    try {
+      const [info, tree] = await Promise.all([
+        state.readMatrix.getUserInfo(child.address),
+        state.readMatrix.getTreeInfo(child.address),
+      ]);
+
+      return {
+        address: child.address,
+        parent: root,
+        placementParent: root,
+        side: child.side,
+        placementSide: child.side,
+        depth: 1,
+        placementDepth: 1,
         info,
         tree,
       };
@@ -1539,14 +1572,15 @@ async function loadTree(address) {
     ]);
     state.previewRootInfo = info;
     state.previewTree = tree;
-    const [teamMembers, directReferrals] = await Promise.all([
+    const [teamMembers, immediateTreeMembers, directReferrals] = await Promise.all([
       queryTeamFromContract(root, tree),
+      queryImmediateTreeMembers(root, tree),
       state.readMatrix.getDirectReferrals(root).catch(() => []),
     ]);
     const directReferralMembers = await queryDirectReferralMembers(directReferrals, root, tree);
     state.previewMembers = normalizeSponsorTeamMembers(
       root,
-      mergeTeamMembers(teamMembers, directReferralMembers)
+      mergeTeamMembers(teamMembers, immediateTreeMembers, directReferralMembers)
     );
     render();
   } catch (error) {
