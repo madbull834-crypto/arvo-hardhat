@@ -87,7 +87,7 @@ a {
   position: absolute;
   inset: -80px auto -80px -120px;
   width: 460px;
-  background: url("./assets/arvo-logo.svg") center / contain no-repeat;
+  background: url("./assets/arvo-logo.jpeg") center / contain no-repeat;
   opacity: .09;
   transform: rotate(-12deg);
 }
@@ -208,19 +208,51 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
   padding: 10px 20px;
 }
 
 .logo {
   width: 190px;
   height: 64px;
-  background: url("./assets/arvo-logo.svg") left center / contain no-repeat;
+  background: url("./assets/arvo-logo.jpeg") left center / contain no-repeat;
+  border-radius: 8px;
 }
 
 .top-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 12px;
+}
+
+.social-links {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.social-link {
+  min-height: 36px;
+  display: inline-grid;
+  place-items: center;
+  padding: 8px 12px;
+  border: 1px solid rgba(240, 185, 11, .28);
+  border-radius: 6px;
+  color: #181a20;
+  background: #ffffff;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.top-actions .social-link {
+  color: #f5f6f8;
+  background: rgba(255,255,255,.08);
+  border-color: rgba(255,255,255,.16);
 }
 
 .notification {

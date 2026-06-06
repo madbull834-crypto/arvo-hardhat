@@ -104,6 +104,11 @@ const packages = [
   ["Max Level", "Level 12"]
 ];
 
+const socialLinks = [
+  ["Telegram", "https://t.me/arvoindia"],
+  ["WhatsApp", "https://whatsapp.com/channel/0029Vb6xfcqFCCoRnmkUa21F"],
+];
+
 const app = document.querySelector("#app");
 const eventCache = new Map();
 
@@ -927,6 +932,7 @@ function shell(content) {
       <header class="topbar">
         <div class="logo" aria-label="Arvo"></div>
         <div class="top-actions">
+          ${socialLinksHtml()}
           <a class="wallet-pill" href="${explorerAddress(state.account)}" target="_blank" rel="noreferrer">
             <span class="coin-mark">${escapeHtml(CONFIG.nativeCurrency.symbol)}</span>${formatNative(state.data?.nativeBalance || 0n)} ${escapeHtml(CONFIG.nativeCurrency.symbol)}
             <span class="avatar-mark"></span>${shortAddress(state.account)}
@@ -939,6 +945,14 @@ function shell(content) {
         ${tabs.map(([id, label]) => `<button class="${state.tab === id ? "active" : ""}" data-tab="${id}" ${state.busy ? "disabled" : ""}>${label}</button>`).join("")}
       </nav>
       <main class="content">${statusHtml()}${content}</main>
+    </div>
+  `;
+}
+
+function socialLinksHtml() {
+  return `
+    <div class="social-links">
+      ${socialLinks.map(([label, url]) => `<a class="social-link" href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(label)}</a>`).join("")}
     </div>
   `;
 }
@@ -959,6 +973,7 @@ function login() {
     <div class="login-page">
       <section class="login-stack">
         <div class="wallet-pill"><span class="coin-mark">${escapeHtml(CONFIG.nativeCurrency.symbol)}</span>${connected ? shortAddress(state.account) : "Wallet not connected"}</div>
+        ${socialLinksHtml()}
         <div class="login-card">
           <h1>Member Access</h1>
           <p>${connected ? unregistered ? "Wallet connected only. Registration required." : "Registered wallet connected" : "Connect wallet to continue"}</p>
