@@ -105,8 +105,8 @@ const packages = [
 ];
 
 const socialLinks = [
-  ["Telegram", "https://t.me/arvoindia"],
-  ["WhatsApp", "https://whatsapp.com/channel/0029Vb6xfcqFCCoRnmkUa21F"],
+  { label: "Telegram", url: "https://t.me/arvoindia", icon: "./assets/telegram.svg" },
+  { label: "WhatsApp", url: "https://whatsapp.com/channel/0029Vb6xfcqFCCoRnmkUa21F", icon: "./assets/whatsapp.svg" },
 ];
 
 const app = document.querySelector("#app");
@@ -952,7 +952,11 @@ function shell(content) {
 function socialLinksHtml() {
   return `
     <div class="social-links">
-      ${socialLinks.map(([label, url]) => `<a class="social-link" href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(label)}</a>`).join("")}
+      ${socialLinks.map(({ label, url, icon }) => `
+        <a class="social-link" href="${escapeHtml(url)}" target="_blank" rel="noreferrer" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">
+          <img src="${escapeHtml(icon)}" alt="">
+        </a>
+      `).join("")}
     </div>
   `;
 }

@@ -237,22 +237,27 @@ a {
 }
 
 .social-link {
-  min-height: 36px;
+  width: 38px;
+  height: 38px;
   display: inline-grid;
   place-items: center;
-  padding: 8px 12px;
+  padding: 7px;
   border: 1px solid rgba(240, 185, 11, .28);
   border-radius: 6px;
   color: #181a20;
   background: #ffffff;
-  font-size: 13px;
-  font-weight: 900;
 }
 
 .top-actions .social-link {
   color: #f5f6f8;
   background: rgba(255,255,255,.08);
   border-color: rgba(255,255,255,.16);
+}
+
+.social-link img {
+  width: 24px;
+  height: 24px;
+  display: block;
 }
 
 .notification {
