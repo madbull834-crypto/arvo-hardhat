@@ -812,8 +812,8 @@ function dashboard() {
   const joined = data.registeredEvents.asUser[0];
   const ref = `${location.origin}${location.pathname}?ref=${state.account}`;
   const eventDirectIncome  = data.directEvents.reduce((sum, item) => sum + item.args.amount, 0n);
-  const countDirectIncome  = BigInt(user.directCount || 0) * DIRECT_REFERRAL_AMOUNT;
-  const directIncome       = data.incomeTotals.directIncome || (eventDirectIncome > countDirectIncome ? eventDirectIncome : countDirectIncome);
+  const storedDirectIncome = data.incomeTotals.directIncome || 0n;
+  const directIncome       = eventDirectIncome > storedDirectIncome ? eventDirectIncome : storedDirectIncome;
   const totalIncome        = directIncome + user.claimableUsdt;
 
   // ORBD earnings from pool stats
@@ -998,7 +998,7 @@ function referralEarningRows(data) {
       <div class="history-row">
         <div>${eventRows.length + index + 1}</div>
         <div><a href="${explorerAddress(address)}" target="_blank" rel="noreferrer">${shortAddress(address)}</a></div>
-        <div>${formatUsdt(DIRECT_REFERRAL_AMOUNT)} USDT direct paid</div>
+        <div>Direct referral from contract storage</div>
         <div>Contract storage</div>
       </div>
     `);
@@ -1009,7 +1009,7 @@ function referralEarningRows(data) {
       <div class="history-row">
         <div>${data.user.directCount.toString()}</div>
         <div>Direct referrals</div>
-        <div>${formatUsdt(BigInt(data.user.directCount) * DIRECT_REFERRAL_AMOUNT)} USDT direct income</div>
+        <div>Count only. No direct income payment found.</div>
         <div>Contract count</div>
       </div>
     `);
@@ -1071,10 +1071,10 @@ function directs() {
         <td><a href="${explorerAddress(member.address)}" target="_blank" rel="noreferrer">${shortAddress(member.address)}</a></td>
         <td>${levelBadge(member.info.currentLevel)}</td>
         <td>Level ${member.depth} / ${member.side}</td>
-        <td>${sameAddress(member.info.referrer, state.account) ? `${formatUsdt(DIRECT_REFERRAL_AMOUNT)} USDT` : "Downline wallet"}</td>
+        <td>${sameAddress(member.info.referrer, state.account) ? "Direct referral" : "Downline wallet"}</td>
       </tr>
     `).join("") || `<tr><td colspan="5">No wallets found at downline Level ${selectedLevel}</td></tr>`;
-    return tablePage("Direct Team", rows, ["Sr. No.", "User", "Level", "Placement", "Direct Income"]);
+    return tablePage("Direct Team", rows, ["Sr. No.", "User", "Level", "Placement", "Relationship"]);
   }
 
   const events = state.data.registeredEvents.asReferrer;
@@ -1109,7 +1109,7 @@ function directs() {
         <td><a href="${explorerAddress(address)}" target="_blank" rel="noreferrer">${shortAddress(address)}</a></td>
         <td>${member ? levelBadge(member.info.currentLevel) : "-"}</td>
         <td>${member ? `Tree level ${member.depth}` : "Contract storage"}</td>
-        <td>${formatUsdt(DIRECT_REFERRAL_AMOUNT)} USDT</td>
+        <td>Referral record</td>
       </tr>
     `;
     });
