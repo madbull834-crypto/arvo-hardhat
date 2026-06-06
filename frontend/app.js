@@ -52,7 +52,7 @@ const POOL_COUNT = 11; // pools 0–10
 const TEAM_MAX_DEPTH = 20;
 const TEAM_MAX_MEMBERS = 1000;
 const CONTRACT_TEAM_PAGE_SIZE = 200;
-const TREE_VISIBLE_LEVELS = 3;
+const TREE_VISIBLE_LEVELS = 4;
 
 const state = {
   account: "",
@@ -1442,8 +1442,8 @@ function treeView(title, showSearch) {
         </div>
         <strong>${empty ? "Empty Position" : shortAddress(address)}</strong>
         <div class="tree-meta">
-          <span>${empty ? "No member here yet" : rank}</span>
-          <span>${empty ? "Ready for next member" : `${directs} direct referrals`}</span>
+          <span>${empty ? "Open" : rank}</span>
+          <span>${empty ? "-" : `${directs} direct`}</span>
         </div>
         <button ${empty ? "disabled" : `data-tree-address="${actionAddress}"`}>${actionLabel}</button>
       </article>

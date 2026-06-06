@@ -764,7 +764,7 @@ tbody tr:hover td {
 .tree-board {
   width: 100%;
   margin: 0 auto;
-  min-height: 360px;
+  min-height: 340px;
   max-height: 70vh;
   position: relative;
   overflow: auto;
@@ -776,7 +776,7 @@ tbody tr:hover td {
     linear-gradient(180deg, #181a20, #0b0e11);
   background-size: 28px 28px, 28px 28px, auto;
   box-shadow: 0 18px 40px rgba(24, 26, 32, .16);
-  padding: 18px 14px 24px;
+  padding: 16px 12px 22px;
   scrollbar-width: thin;
 }
 
@@ -784,7 +784,7 @@ tbody tr:hover td {
 .tree-list ul {
   display: flex;
   justify-content: center;
-  gap: 18px;
+  gap: 12px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -797,7 +797,7 @@ tbody tr:hover td {
 }
 
 .tree-list ul {
-  padding-top: 32px;
+  padding-top: 26px;
 }
 
 .tree-list li {
@@ -810,24 +810,24 @@ tbody tr:hover td {
 .tree-list ul::before {
   content: "";
   position: absolute;
-  top: 15px;
+  top: 12px;
   left: 50%;
-  width: calc(100% - 128px);
+  width: calc(100% - 104px);
   min-width: 0;
   height: 2px;
   transform: translateX(-50%);
-  background: rgba(240, 185, 11, .55);
+  background: rgba(240, 185, 11, .45);
 }
 
 .tree-list ul > li::before {
   content: "";
   position: absolute;
-  top: -17px;
+  top: -14px;
   left: 50%;
   width: 2px;
-  height: 17px;
+  height: 14px;
   transform: translateX(-50%);
-  background: rgba(240, 185, 11, .55);
+  background: rgba(240, 185, 11, .45);
 }
 
 .tree-list li > .tree-node + ul::after {
@@ -836,9 +836,9 @@ tbody tr:hover td {
   top: 0;
   left: 50%;
   width: 2px;
-  height: 32px;
+  height: 26px;
   transform: translateX(-50%);
-  background: rgba(240, 185, 11, .55);
+  background: rgba(240, 185, 11, .45);
 }
 
 .tree-empty {
@@ -861,17 +861,17 @@ tbody tr:hover td {
 }
 
 .tree-node {
-  width: 128px;
-  min-height: 104px;
+  width: 104px;
+  min-height: 88px;
   text-align: left;
   color: #f5f6f8;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
-  border: 1px solid rgba(240,185,11,.26);
-  border-radius: 8px;
-  background: #1e2329;
-  padding: 8px;
-  box-shadow: 0 10px 22px rgba(0, 0, 0, .22);
+  border: 1px solid rgba(240,185,11,.22);
+  border-radius: 7px;
+  background: linear-gradient(180deg, #20252d, #14181f);
+  padding: 7px;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, .22);
 }
 
 .tree-node.is-empty {
@@ -885,18 +885,18 @@ tbody tr:hover td {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
-  margin-bottom: 6px;
+  gap: 5px;
+  margin-bottom: 5px;
 }
 
 .tree-avatar {
-  width: 24px;
-  height: 24px;
-  flex: 0 0 24px;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
   border-radius: 50%;
   background:
     linear-gradient(180deg, #f0b90b 0 48%, #03a66d 49% 100%);
-  box-shadow: inset 0 -5px 0 rgba(255,255,255,.18);
+  box-shadow: inset 0 -4px 0 rgba(255,255,255,.18);
 }
 
 .tree-side {
@@ -904,43 +904,45 @@ tbody tr:hover td {
   border-radius: 999px;
   color: #6b4c00;
   background: #fff8df;
-  padding: 4px 6px;
-  font-size: 10px;
+  padding: 3px 5px;
+  font-size: 9px;
   font-weight: 900;
 }
 
 .tree-node strong {
   display: block;
   overflow-wrap: anywhere;
-  font-size: 12px;
+  font-size: 11px;
   color: #ffffff;
+  line-height: 1.15;
 }
 
 .tree-meta {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 4px;
-  margin: 6px 0;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  margin: 5px 0;
 }
 
 .tree-meta span {
-  border-radius: 6px;
+  border-radius: 5px;
   background: #0b0e11;
   color: #f0b90b;
-  padding: 4px;
+  padding: 3px;
   text-align: center;
-  font-size: 10px;
+  font-size: 9px;
+  line-height: 1.1;
 }
 
 .tree-node button {
   width: 100%;
-  min-height: 26px;
+  min-height: 22px;
   background: var(--gold);
   color: #181a20;
   border: 0;
-  border-radius: 5px;
+  border-radius: 4px;
   font-weight: 900;
-  font-size: 11px;
+  font-size: 10px;
 }
 
 .tree-node button:disabled {
