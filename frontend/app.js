@@ -52,6 +52,7 @@ const POOL_COUNT = 11; // pools 0–10
 const TEAM_MAX_DEPTH = 20;
 const TEAM_MAX_MEMBERS = 1000;
 const CONTRACT_TEAM_PAGE_SIZE = 200;
+const TREE_VISIBLE_LEVELS = 3;
 
 const state = {
   account: "",
@@ -1449,7 +1450,7 @@ function treeView(title, showSearch) {
     `;
   };
 
-  const childBranch = (parentTree, side) => {
+  const childBranch = (parentTree, side, depth) => {
     const childAddress = side === "Left" ? parentTree?.leftChild : parentTree?.rightChild;
     if (!childAddress || childAddress === ZERO) {
       return `<li>${treeNode("", null, side, "Empty")}</li>`;
@@ -1462,13 +1463,15 @@ function treeView(title, showSearch) {
       side,
       "Focus",
       childAddress,
-      child?.tree || null
+      child?.tree || null,
+      depth
     );
   };
 
-  const renderBranch = (address, info, label, actionLabel, actionAddress = address, treeInfo = null) => {
+  const renderBranch = (address, info, label, actionLabel, actionAddress = address, treeInfo = null, depth = 0) => {
     const activeTree = treeInfo || memberByAddress.get(address.toLowerCase())?.tree;
     const hasLoadedChildren = Boolean(
+      depth < TREE_VISIBLE_LEVELS &&
       activeTree &&
       ((activeTree.leftChild && activeTree.leftChild !== ZERO) ||
        (activeTree.rightChild && activeTree.rightChild !== ZERO))
@@ -1479,8 +1482,8 @@ function treeView(title, showSearch) {
         ${treeNode(address, info, label, actionLabel, actionAddress)}
         ${hasLoadedChildren ? `
           <ul>
-            ${childBranch(activeTree, "Left")}
-            ${childBranch(activeTree, "Right")}
+            ${childBranch(activeTree, "Left", depth + 1)}
+            ${childBranch(activeTree, "Right", depth + 1)}
           </ul>
         ` : ""}
       </li>
@@ -1495,7 +1498,8 @@ function treeView(title, showSearch) {
         isOwnRoot ? "Your Wallet" : "Selected Wallet",
         isOwnRoot ? "You are here" : "Back to My Wallet",
         isOwnRoot ? root : state.account,
-        rootTree
+        rootTree,
+        0
       )}</ul>`
     : `<div class="tree-empty">No registered member found for this wallet.</div>`;
 
@@ -1505,7 +1509,7 @@ function treeView(title, showSearch) {
         <div>
           <p>This shows the binary Left and Right placement tree. Sponsor/upline is shown in Direct, My Team, and Community Info.</p>
           <h1>${title}</h1>
-          <span class="tree-count">${totalShown} wallet${totalShown === 1 ? "" : "s"} shown</span>
+          <span class="tree-count">${totalShown} wallet${totalShown === 1 ? "" : "s"} loaded. Showing ${TREE_VISIBLE_LEVELS} placement levels.</span>
         </div>
         ${showSearch ? `<form class="search-row" data-tree-search><input name="address" placeholder="Paste wallet address" value="${!isOwnRoot ? root : ""}"><button>Show Tree</button></form>` : ""}
       </div>
