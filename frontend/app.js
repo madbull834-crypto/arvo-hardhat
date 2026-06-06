@@ -1529,9 +1529,14 @@ async function loadTree(address) {
     ]);
     state.previewRootInfo = info;
     state.previewTree = tree;
+    const [teamMembers, directReferrals] = await Promise.all([
+      queryTeamFromContract(root, tree),
+      state.readMatrix.getDirectReferrals(root).catch(() => []),
+    ]);
+    const directReferralMembers = await queryDirectReferralMembers(directReferrals, root, tree);
     state.previewMembers = normalizeSponsorTeamMembers(
       root,
-      await queryTeamFromContract(root, tree)
+      mergeTeamMembers(teamMembers, directReferralMembers)
     );
     render();
   } catch (error) {
