@@ -1204,6 +1204,31 @@ function placementText(member) {
   return `${shortAddress(parent)} / ${side}`;
 }
 
+function memberListRows(members, emptyText, options = {}) {
+  const showClaimable = options.showClaimable === true;
+  const rows = (members || []).map((member, index) => `
+    <tr>
+      <td>${index + 1}</td>
+      <td>${memberIdCell(member.address)}</td>
+      <td>${memberAddressCell(member.address)}</td>
+      <td>${sponsorCell(member)}</td>
+      <td>Sponsor Level ${member.depth}</td>
+      <td>${placementText(member)}</td>
+      <td>${levelBadge(member.info.currentLevel)}</td>
+      <td>${member.info.directCount.toString()}</td>
+      ${showClaimable ? `<td>${formatUsdt(member.info.claimableUsdt)} USDT</td>` : ""}
+    </tr>
+  `).join("");
+
+  const columnCount = showClaimable ? 9 : 8;
+  return rows || `<tr><td colspan="${columnCount}">${emptyText}</td></tr>`;
+}
+
+function memberListColumns(options = {}) {
+  const columns = ["SNo.", "Member ID", "Address", "Sponsor/Upline", "Level", "Placement Parent", "Rank", "Direct Team"];
+  return options.showClaimable ? [...columns, "Claimable"] : columns;
+}
+
 function tablePage(title, rows, columns, options = {}) {
   const selectedLevel = downlineLevelFilter();
   const showAllButton = options.showAllButton !== false;
@@ -1241,20 +1266,9 @@ function directs() {
   const allMembers = teamMembers();
   const counts = levelCounts(allMembers);
   if (selectedLevel) {
-    const members = filterByDownlineLevel(
-      allMembers
-    );
-    const rows = members.map((member, index) => `
-      <tr>
-        <td>${index + 1}</td>
-        <td>${memberIdCell(member.address)}</td>
-        <td>${memberAddressCell(member.address)}</td>
-        <td>${levelBadge(member.info.currentLevel)}</td>
-        <td>Sponsor Level ${member.depth}</td>
-        <td>${sameAddress(member.info.referrer, state.account) ? "Direct referral" : "Downline wallet"}</td>
-      </tr>
-    `).join("") || `<tr><td colspan="6">No wallets found at downline Level ${selectedLevel}</td></tr>`;
-    return tablePage("Direct Team", rows, ["Sr. No.", "Member ID", "Address", "Level", "Sponsor Level", "Relationship"], { levelCounts: counts });
+    const members = filterByDownlineLevel(allMembers);
+    const rows = memberListRows(members, `No wallets found at downline Level ${selectedLevel}`);
+    return tablePage("Direct Team", rows, memberListColumns(), { levelCounts: counts });
   }
 
   const events = state.data.registeredEvents.asReferrer;
@@ -1295,7 +1309,16 @@ function directs() {
       </tr>
     `;
     });
-  const rows = [...rowsFromEvents, ...rowsFromStorage].join("") || `<tr><td colspan="6">No direct referral records found. Contract direct count: ${state.data.user.directCount.toString()}</td></tr>`;
+  const directRows = [...rowsFromEvents, ...rowsFromStorage].join("");
+  if (!directRows && allMembers.length) {
+    return tablePage(
+      "Direct Team",
+      memberListRows(allMembers, "No team wallets found"),
+      memberListColumns(),
+      { levelCounts: counts }
+    );
+  }
+  const rows = directRows || `<tr><td colspan="6">No direct referral records found. Contract direct count: ${state.data.user.directCount.toString()}</td></tr>`;
   return tablePage("Direct Team", rows, ["Sr. No.", "Member ID", "Address", "Level", "Join Block", "Direct Income"], { levelCounts: counts });
 }
 
@@ -1304,19 +1327,8 @@ function myTeam() {
   const allMembers = teamMembers();
   const members = filterByDownlineLevel(allMembers);
   const counts = levelCounts(allMembers);
-  const rows = members.map((member, index) => `
-    <tr>
-      <td>${index + 1}</td>
-      <td>${memberIdCell(member.address)}</td>
-      <td>${memberAddressCell(member.address)}</td>
-      <td>${sponsorCell(member)}</td>
-      <td>Sponsor Level ${member.depth}</td>
-      <td>${placementText(member)}</td>
-      <td>${levelBadge(member.info.currentLevel)}</td>
-      <td>${member.info.directCount.toString()}</td>
-    </tr>
-  `).join("") || `<tr><td colspan="8">${selectedLevel ? `No team records found at downline Level ${selectedLevel}` : "No team records yet"}</td></tr>`;
-  return tablePage("My Team", rows, ["SNo.", "ID", "Address", "Sponsor/Upline", "Level", "Placement Parent", "Rank", "Direct Team"], { levelCounts: counts });
+  const rows = memberListRows(members, selectedLevel ? `No team records found at downline Level ${selectedLevel}` : "No team records yet");
+  return tablePage("My Team", rows, memberListColumns(), { levelCounts: counts });
 }
 
 function community() {
@@ -1324,19 +1336,12 @@ function community() {
   const allMembers = teamMembers();
   const members = filterByDownlineLevel(allMembers);
   const counts = levelCounts(allMembers);
-  const rows = members.map((member, index) => `
-    <tr>
-      <td>${index + 1}</td>
-      <td>${memberIdCell(member.address)}</td>
-      <td>${memberAddressCell(member.address)}</td>
-      <td>${sponsorCell(member)}</td>
-      <td>${member.depth}</td>
-      <td>${placementText(member)}</td>
-      <td>${levelBadge(member.info.currentLevel)}</td>
-      <td>${formatUsdt(member.info.claimableUsdt)} USDT</td>
-    </tr>
-  `).join("") || `<tr><td colspan="8">${selectedLevel ? `No community members found at downline Level ${selectedLevel}` : "No community members found under this wallet"}</td></tr>`;
-  return tablePage("Community Info", rows, ["SNo.", "Member ID", "Address", "Sponsor/Upline", "Level", "Placement Parent", "Rank", "Claimable"], { levelCounts: counts });
+  const rows = memberListRows(
+    members,
+    selectedLevel ? `No community members found at downline Level ${selectedLevel}` : "No community members found under this wallet",
+    { showClaimable: true }
+  );
+  return tablePage("Community Info", rows, memberListColumns({ showClaimable: true }), { levelCounts: counts });
 }
 
 function tree() {
