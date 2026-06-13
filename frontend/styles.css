@@ -647,6 +647,35 @@ tbody tr:hover td {
   border: 1px solid rgba(112, 122, 138, .24);
 }
 
+.pool-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  margin-left: 8px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.pool-status.active {
+  color: #064e3b;
+  background: #d1fae5;
+  border: 1px solid rgba(16, 185, 129, .34);
+}
+
+.pool-status.pending {
+  color: #6b4c00;
+  background: #fff8df;
+  border: 1px solid rgba(240, 185, 11, .42);
+}
+
+.pool-status.inactive {
+  color: var(--text-muted);
+  background: #f5f6f8;
+  border: 1px solid rgba(112, 122, 138, .24);
+}
+
 .pager {
   display: flex;
   flex-wrap: wrap;

@@ -172,6 +172,17 @@ contract ARVOMatrix is Initializable, ReentrancyGuardUpgradeableLocal, PausableU
     event MigrationClosedForever();
     event UserAccountingMigrated(address indexed user);
     event DirectReferralsMigrated(address indexed referrer, uint256 count, bool replaced);
+    event MigrationEligibilityRepaired(
+        address indexed user,
+        uint256 oldDirectCount,
+        uint256 newDirectCount,
+        uint256 poolsQualified
+    );
+    event MigrationClaimableRepaired(
+        address indexed user,
+        uint256 oldClaimableUsdt,
+        uint256 newClaimableUsdt
+    );
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -467,6 +478,72 @@ contract ARVOMatrix is Initializable, ReentrancyGuardUpgradeableLocal, PausableU
         emit DirectReferralsMigrated(referrer, referrals.length, replace);
     }
 
+    /// @notice Repair migrated users whose referral/level data was imported but pool eligibility was not synced.
+    /// @dev Intended for post-migration cleanup only. It uses the direct-referral list as source of truth
+    ///      when it is larger than stored directCount, then qualifies all missing ORBD pools implied by
+    ///      2-direct eligibility and currentLevel.
+    function repairMigratedPoolEligibility(address[] calldata accounts) external onlyOwner {
+        if (accounts.length == 0) revert InvalidMigrationInput();
+
+        for (uint256 i = 0; i < accounts.length;) {
+            address account = accounts[i];
+            if (account == address(0)) revert MigrationUserZero();
+
+            User storage u = users[account];
+            if (!u.isRegistered) revert NotRegistered();
+
+            uint256 oldDirectCount = u.directCount;
+            uint256 referralCount = _directReferrals[account].length;
+            if (referralCount > u.directCount) {
+                u.directCount = referralCount;
+            }
+
+            uint256 poolsQualified;
+            if (u.directCount >= 2 && !pool.isQualified(account, 0)) {
+                pool.qualifyMember(account, 0);
+                emit PoolQualified(account, 0);
+                poolsQualified++;
+            }
+
+            for (uint8 poolId = 1; poolId < 11;) {
+                if (u.currentLevel >= poolId + 2 && !pool.isQualified(account, poolId)) {
+                    pool.qualifyMember(account, poolId);
+                    emit PoolQualified(account, poolId);
+                    poolsQualified++;
+                }
+                unchecked { poolId++; }
+            }
+
+            emit MigrationEligibilityRepaired(account, oldDirectCount, u.directCount, poolsQualified);
+            unchecked { i++; }
+        }
+    }
+
+    /// @notice Repair migrated claimable balances when legacy accounting was imported incorrectly.
+    /// @dev Owner-only because it directly changes withdrawable USDT accounting.
+    function repairMigratedClaimableUsdt(
+        address[] calldata accounts,
+        uint256[] calldata claimableUsdt
+    ) external onlyOwner {
+        if (accounts.length == 0 || accounts.length != claimableUsdt.length) {
+            revert InvalidMigrationInput();
+        }
+
+        for (uint256 i = 0; i < accounts.length;) {
+            address account = accounts[i];
+            if (account == address(0)) revert MigrationUserZero();
+
+            User storage u = users[account];
+            if (!u.isRegistered) revert NotRegistered();
+
+            uint256 oldClaimable = u.claimableUsdt;
+            u.claimableUsdt = claimableUsdt[i];
+
+            emit MigrationClaimableRepaired(account, oldClaimable, claimableUsdt[i]);
+            unchecked { i++; }
+        }
+    }
+
     function _authorizeUpgrade(address newImplementation)
         internal
         override
@@ -570,7 +647,8 @@ contract ARVOMatrix is Initializable, ReentrancyGuardUpgradeableLocal, PausableU
     ///      Per the ARVO Matrix business rules:
     ///        • Levels 1–11: $2.5 sub-member contributions are locked until the upgrade
     ///          cost for that level is fully funded; later positions are claimable.
-    ///        • Level 12 (MAX_LEVEL): all sub-members → claimable (no further upgrade to fund).
+    ///        • Level 12 (MAX_LEVEL): first 2 members pay to qualified upline as completion bonus;
+    ///          remaining 4094 positions are claimable.
     ///        • Beneficiary must have currentLevel >= level to earn; otherwise income is
     ///          credited to genesis treasury and propagation continues upward.
     ///        • 2-direct requirement gates claimable profit for positions 3+; skipped income
@@ -594,13 +672,25 @@ contract ARVOMatrix is Initializable, ReentrancyGuardUpgradeableLocal, PausableU
 
         b.levelSubCount[level]++;
 
-        // At levels 1–11: $2.5 contributions fund the next-level upgrade until
-        // the configured package cost is reached.
-        // At level 12 there is no next level, so all positions are immediately claimable.
+        // At levels 1–11: income locks to fund the next-level upgrade only while the user
+        // is still ON that level. Once upgraded past level N, walk_level=N income is claimable.
+        // At MAX_LEVEL (12): first 2 members pay to qualified upline as completion bonus;
+        // all remaining positions are claimable (matches business table exactly).
         uint256 needed = LevelConfig.upgradeCost(level);
-        bool shouldLock = (level < MAX_LEVEL) && (b.lockedFunds[level] < needed);
+        bool shouldLock = (level < MAX_LEVEL) && (b.currentLevel == level) && (b.lockedFunds[level] < needed);
+        bool isMaxCompletion = (level == MAX_LEVEL) && (b.levelSubCount[level] <= 2);
 
-        if (shouldLock) {
+        if (isMaxCompletion) {
+            address receiver = _qualifiedUpline(beneficiary, level);
+            uint256 available = usdt.balanceOf(address(this));
+            if (available >= income) {
+                usdt.safeTransfer(receiver, income);
+            } else {
+                users[receiver].claimableUsdt += income;
+            }
+            totalLevelIncome[receiver] += income;
+            emit LevelIncomePaid(receiver, from, level, income, false);
+        } else if (shouldLock) {
             b.lockedFunds[level] += income;
             totalLevelIncome[beneficiary] += income;
             emit LevelIncomePaid(beneficiary, from, level, income, false);

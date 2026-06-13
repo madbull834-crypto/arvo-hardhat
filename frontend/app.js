@@ -1024,10 +1024,15 @@ function dashboard() {
   const user = data.user;
   const joined = data.registeredEvents.asUser[0];
   const ref = `${location.origin}${location.pathname}?ref=${state.account}`;
+  const downlineCount = user.isRegistered ? (data.treeMembers || []).length : 0;
   const eventDirectIncome  = data.directEvents.reduce((sum, item) => sum + item.args.amount, 0n);
   const storedDirectIncome = data.incomeTotals.directIncome || 0n;
   const directIncome       = eventDirectIncome > storedDirectIncome ? eventDirectIncome : storedDirectIncome;
   const totalIncome        = directIncome + user.claimableUsdt;
+
+  const effectiveDirectCount = user.directCount > BigInt(data.directReferralAddresses.length)
+    ? user.directCount
+    : BigInt(data.directReferralAddresses.length);
 
   // ORBD earnings from pool stats
   const totalOrbdReceived  = data.poolStats
@@ -1042,12 +1047,17 @@ function dashboard() {
       : "Disabled";
 
   // Pool stats rows — all 11 pools
-  const poolRows = data.poolStats.filter(Boolean).map(({ index, member, pool }) => `
-    <div class="rank-row">
-      <div>Pool ${index} <span>${member.active ? "Active" : "Inactive"}</span></div>
-      <div>${formatUsdt(member.totalReceived)} USDT received / target ${formatUsdt(pool.target)} USDT (${pool.memberCount.toString()} members)</div>
-    </div>
-  `).join("");
+  const poolRows = data.poolStats.filter(Boolean).map(({ index, member, pool }) => {
+    const eligible = isPoolEligible(index, user, effectiveDirectCount);
+    const status = member.active ? "Active" : eligible ? "Eligible - sync pending" : "Not eligible";
+    const statusClass = member.active ? "active" : eligible ? "pending" : "inactive";
+    return `
+      <div class="rank-row">
+        <div>Pool ${index} <span class="pool-status ${statusClass}">${status}</span></div>
+        <div>${formatUsdt(member.totalReceived)} USDT received / target ${formatUsdt(pool.target)} USDT (${pool.memberCount.toString()} members)</div>
+      </div>
+    `;
+  }).join("");
 
   const referralRows = referralEarningRows(data);
 
@@ -1068,7 +1078,7 @@ function dashboard() {
           <div>Address : <a href="${explorerAddress(state.account)}" target="_blank" rel="noreferrer">${shortAddress(state.account)}</a> <button class="tiny-black" data-copy="${escapeHtml(state.account)}">Copy</button></div>
           <div>Rank : ${rankName(user.currentLevel)}</div>
           <div>Level : ${Number(user.currentLevel)} / ${MAX_LEVEL}</div>
-          <div>Total Members : ${data.totalMembers.toString()}</div>
+          <div>My Downline : ${downlineCount.toString()}</div>
         </div>
         <div class="mini-stats">
           <div class="mini-stat"><span class="mini-icon">$</span><span>USDT Balance<br>${formatUsdt(data.usdtBalance)} ${data.tokenSymbol}</span></div>
@@ -1120,6 +1130,11 @@ function dashboard() {
       ${CONFIG.contracts.oraclePair ? `<div class="address-chip">Oracle Pair : ${shortAddress(CONFIG.contracts.oraclePair)} <button class="tiny-black" data-copy="${escapeHtml(CONFIG.contracts.oraclePair)}">Copy</button></div>` : ""}
     </footer>
   `;
+}
+
+function isPoolEligible(poolIndex, user, effectiveDirectCount) {
+  if (poolIndex === 0) return effectiveDirectCount >= 2n;
+  return Number(user.currentLevel || 0) >= poolIndex + 2;
 }
 
 function historyRows(history) {
