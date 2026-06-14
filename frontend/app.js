@@ -53,6 +53,7 @@ const TEAM_MAX_DEPTH = 20;
 const TEAM_MAX_MEMBERS = 1000;
 const CONTRACT_TEAM_PAGE_SIZE = 200;
 const TREE_VISIBLE_LEVELS = 4;
+const TREE_PRELOAD_DEPTH = TREE_VISIBLE_LEVELS + 1;
 
 const state = {
   account: "",
@@ -76,6 +77,7 @@ const state = {
   treeRoot: "",
   previewTree: null,
   previewRootInfo: null,
+  previewPlacementMembers: [],
   previewMembers: [],
   initialized: false
 };
@@ -192,8 +194,7 @@ function rankName(level) {
 
 function levelBadge(level) {
   const numericLevel = Number(level || 0);
-  const currentLevel = Number(state.data?.user?.currentLevel || 0);
-  const statusClass = numericLevel > 0 && numericLevel <= currentLevel ? "unlocked" : "locked";
+  const statusClass = numericLevel > 0 ? "unlocked" : "locked";
   return `<span class="level-badge ${statusClass}">${rankName(numericLevel)}</span>`;
 }
 
@@ -408,10 +409,19 @@ async function refresh() {
     ]);
 
     const immediateTreeMembers = await queryImmediateTreeMembers(state.account, tree);
+    const placementTreeMembers = mergeTeamMembers(treeMembers, immediateTreeMembers);
+    const levelStats = await queryLevelStats(state.account);
+
     const directReferralMembers = await queryDirectReferralMembers(directReferralAddresses, state.account, tree);
+
+    // Pre-load tree nodes within the visible depth so the tree renders fully.
+    const treeNodeMap = new Map(placementTreeMembers.map((m) => [m.address.toLowerCase(), m]));
+    await preloadTreeNodes(tree, treeNodeMap, TREE_PRELOAD_DEPTH);
+    const enrichedPlacementMembers = [...treeNodeMap.values()];
+
     const mergedTreeMembers = normalizeSponsorTeamMembers(
       state.account,
-      mergeTeamMembers(treeMembers, immediateTreeMembers, directReferralMembers)
+      mergeTeamMembers(enrichedPlacementMembers, directReferralMembers)
     );
 
     state.data = {
@@ -431,9 +441,11 @@ async function refresh() {
       history,
       poolStats,
       oracleState,
+      placementTreeMembers: enrichedPlacementMembers,
       treeMembers: mergedTreeMembers,
       directReferralAddresses,
-      incomeTotals
+      incomeTotals,
+      levelStats
     };
     if (user.isRegistered) {
       localStorage.setItem(SESSION_KEY, "1");
@@ -818,6 +830,65 @@ async function queryPoolStats(account) {
   return Promise.all(jobs);
 }
 
+// Pre-load getTreeInfo for any node within TREE_PRELOAD_DEPTH whose tree data is missing,
+// so the rendered tree can expand to the full visible depth.
+async function preloadTreeNodes(rootTree, memberByAddress, maxDepth) {
+  const toFetch = [];
+  const queue = [{ tree: rootTree, depth: 0 }];
+
+  while (queue.length) {
+    const { tree, depth } = queue.shift();
+    if (!tree || depth >= maxDepth) continue;
+
+    for (const childAddr of [tree.leftChild, tree.rightChild]) {
+      if (!childAddr || childAddr === ZERO) continue;
+      const key = childAddr.toLowerCase();
+      const existing = memberByAddress.get(key);
+      if (existing?.tree) {
+        queue.push({ tree: existing.tree, depth: depth + 1 });
+      } else {
+        toFetch.push({ addr: childAddr, key, depth: depth + 1 });
+      }
+    }
+  }
+
+  // Process in waves so each wave's discovered children get enqueued for the next wave.
+  while (toFetch.length) {
+    const wave = toFetch.splice(0);
+    await Promise.all(wave.map(async ({ addr, key, depth }) => {
+      try {
+        const [info, tree] = await Promise.all([
+          state.readMatrix.getUserInfo(addr),
+          state.readMatrix.getTreeInfo(addr),
+        ]);
+        const existing = memberByAddress.get(key) || {};
+        memberByAddress.set(key, { ...existing, address: addr, info, tree, depth, side: existing.side || "-" });
+        if (depth < maxDepth) {
+          for (const childAddr2 of [tree.leftChild, tree.rightChild]) {
+            if (!childAddr2 || childAddr2 === ZERO) continue;
+            const key2 = childAddr2.toLowerCase();
+            if (!memberByAddress.get(key2)?.tree) toFetch.push({ addr: childAddr2, key: key2, depth: depth + 1 });
+          }
+        }
+      } catch { /* skip failed node */ }
+    }));
+  }
+}
+
+async function queryLevelStats(account) {
+  return Promise.all(
+    Array.from({ length: MAX_LEVEL }, async (_, i) => {
+      const level = i + 1;
+      try {
+        const [subCount, locked] = await state.readMatrix.getLevelStats(account, level);
+        return { level, subCount, locked };
+      } catch {
+        return { level, subCount: 0n, locked: 0n };
+      }
+    })
+  );
+}
+
 async function queryOracleState() {
   try {
     const [stateResult, preview] = await Promise.all([
@@ -1024,7 +1095,7 @@ function dashboard() {
   const user = data.user;
   const joined = data.registeredEvents.asUser[0];
   const ref = `${location.origin}${location.pathname}?ref=${state.account}`;
-  const downlineCount = user.isRegistered ? (data.treeMembers || []).length : 0;
+  const downlineCount = user.isRegistered ? (data.placementTreeMembers || []).length : 0;
   const eventDirectIncome  = data.directEvents.reduce((sum, item) => sum + item.args.amount, 0n);
   const storedDirectIncome = data.incomeTotals.directIncome || 0n;
   const directIncome       = eventDirectIncome > storedDirectIncome ? eventDirectIncome : storedDirectIncome;
@@ -1078,7 +1149,8 @@ function dashboard() {
           <div>Address : <a href="${explorerAddress(state.account)}" target="_blank" rel="noreferrer">${shortAddress(state.account)}</a> <button class="tiny-black" data-copy="${escapeHtml(state.account)}">Copy</button></div>
           <div>Rank : ${rankName(user.currentLevel)}</div>
           <div>Level : ${Number(user.currentLevel)} / ${MAX_LEVEL}</div>
-          <div>My Downline : ${downlineCount.toString()}</div>
+          <div>My Downline (Binary Tree) : ${downlineCount.toString()}</div>
+          <div>Total Network Members : ${data.totalMembers.toString()}</div>
         </div>
         <div class="mini-stats">
           <div class="mini-stat"><span class="mini-icon">$</span><span>USDT Balance<br>${formatUsdt(data.usdtBalance)} ${data.tokenSymbol}</span></div>
@@ -1116,6 +1188,20 @@ function dashboard() {
       <div class="income-tile"><div class="amount">${oracleRate}</div><strong>Oracle Rate</strong><span>${oracleStatus}</span></div>
       <div class="income-tile"><div class="amount">$ ${formatUsdt(totalIncome)}</div><strong>Total USDT Income</strong></div>
     </section>
+    <div class="section-label">Level Income Stats (On-chain)</div>
+    <section class="rank-table">${(data.levelStats || []).map(({ level, subCount, locked }) => {
+      const isUnlocked = Number(user.currentLevel) >= level;
+      const n = Number(subCount || 0n);
+      const lockedUsdt = formatUsdt(locked || 0n);
+      const statusClass = isUnlocked ? "active" : "inactive";
+      const statusLabel = isUnlocked ? "Unlocked" : "Locked";
+      return `
+        <div class="rank-row">
+          <div>Level ${level} <span class="pool-status ${statusClass}">${statusLabel}</span></div>
+          <div>${n} sub-member placement${n !== 1 ? "s" : ""}${locked > 0n ? ` · ${lockedUsdt} USDT locked for upgrade` : ""}</div>
+        </div>
+      `;
+    }).join("") || '<div class="rank-row"><div>No level stats yet</div><div>-</div></div>'}</section>
     <div class="section-label">ORBD Pool Rewards (Pools 0–10)</div>
     <section class="rank-table">${poolRows || '<div class="rank-row"><div>No pool memberships yet</div><div>-</div></div>'}</section>
     <div class="section-label">Recent History</div>
@@ -1271,6 +1357,16 @@ function levelCounts(members) {
   return counts;
 }
 
+function levelSubCounts() {
+  const stats = state.data?.levelStats || [];
+  const counts = new Map();
+  for (const s of stats) {
+    const n = Number(s.subCount || 0n);
+    if (n > 0) counts.set(s.level, n);
+  }
+  return counts;
+}
+
 function memberIdCell(address) {
   if (!address || address === ZERO) return "-";
   return `<a href="${explorerAddress(address)}" target="_blank" rel="noreferrer">${shortAddress(address)}</a>`;
@@ -1300,6 +1396,7 @@ function memberListRows(members, emptyText, options = {}) {
       <td>${memberAddressCell(member.address)}</td>
       <td>${sponsorCell(member)}</td>
       <td>${levelBadge(member.info.currentLevel)}</td>
+      <td>${memberPoolBadge(member)}</td>
       <td>Sponsor Level ${member.depth}</td>
       <td>${placementText(member)}</td>
       <td>${member.info.directCount.toString()}</td>
@@ -1307,12 +1404,25 @@ function memberListRows(members, emptyText, options = {}) {
     </tr>
   `).join("");
 
-  const columnCount = showClaimable ? 9 : 8;
+  const columnCount = showClaimable ? 10 : 9;
   return rows || `<tr><td colspan="${columnCount}">${emptyText}</td></tr>`;
 }
 
+function memberPoolBadge(member) {
+  const directCount = member.info?.directCount || 0n;
+  const level = Number(member.info?.currentLevel || 0);
+  let highestPool = -1;
+  if (directCount >= 2n) highestPool = 0;
+  for (let p = 1; p < POOL_COUNT; p++) {
+    if (level >= p + 2) highestPool = p;
+    else break;
+  }
+  if (highestPool < 0) return `<span class="pool-status inactive">None</span>`;
+  return `<span class="pool-status active">Pool ${highestPool}</span>`;
+}
+
 function memberListColumns(options = {}) {
-  const columns = ["SNo.", "Member ID", "Address", "Sponsor/Upline", "Member Level", "Sponsor Depth", "Placement Parent", "Direct Team"];
+  const columns = ["SNo.", "Member ID", "Address", "Sponsor/Upline", "Member Level", "Pool", "Sponsor Depth", "Placement Parent", "Direct Team"];
   return options.showClaimable ? [...columns, "Claimable"] : columns;
 }
 
@@ -1320,14 +1430,18 @@ function tablePage(title, rows, columns, options = {}) {
   const selectedLevel = downlineLevelFilter();
   const showAllButton = options.showAllButton !== false;
   const counts = options.levelCounts || new Map();
+  const subCounts = levelSubCounts();
   const levelButtons = Array.from({ length: MAX_LEVEL }, (_, i) => {
     const level = i + 1;
     const statusClass = level === selectedLevel ? "current" : "unlocked";
-    const count = counts.get(level) || 0;
-    return `<button class="${statusClass}" data-downline-level="${level}">Level ${level}${count ? ` (${count})` : ""}</button>`;
+    const memberCount = counts.get(level) || 0;
+    const subCount = subCounts.get(level) || 0;
+    const displayCount = memberCount || subCount;
+    return `<button class="${statusClass}" data-downline-level="${level}">Level ${level}${displayCount ? ` (${displayCount})` : ""}</button>`;
   }).join("");
+  const totalLoaded = [...counts.values()].reduce((sum, c) => sum + c, 0);
   const allButton = showAllButton
-    ? `<button class="${selectedLevel ? "unlocked" : "current"}" data-downline-level="0">All${counts.size ? ` (${[...counts.values()].reduce((sum, count) => sum + count, 0)})` : ""}</button>`
+    ? `<button class="${selectedLevel ? "unlocked" : "current"}" data-downline-level="0">All${totalLoaded ? ` (${totalLoaded})` : ""}</button>`
     : "";
   const subtitle = selectedLevel
     ? `<div class="table-filter-note">Showing members at Level ${selectedLevel}</div>`
@@ -1438,7 +1552,7 @@ function tree() {
 function treeView(title, showSearch) {
   const root = state.treeRoot || state.account;
   const isOwnRoot = sameAddress(root, state.account);
-  const members = isOwnRoot ? state.data.treeMembers || [] : state.previewMembers || [];
+  const members = isOwnRoot ? state.data.placementTreeMembers || [] : state.previewPlacementMembers || [];
   const memberByAddress = new Map(members.map((member) => [member.address.toLowerCase(), member]));
   const rootInfo = isOwnRoot
     ? state.data.user
@@ -1618,6 +1732,7 @@ async function loadTree(address) {
     if (sameAddress(root, state.account)) {
       state.previewTree = null;
       state.previewRootInfo = null;
+      state.previewPlacementMembers = [];
       state.previewMembers = [];
       render();
       return;
@@ -1634,10 +1749,16 @@ async function loadTree(address) {
       queryImmediateTreeMembers(root, tree),
       state.readMatrix.getDirectReferrals(root).catch(() => []),
     ]);
+    const placementTreeMembers = mergeTeamMembers(teamMembers, immediateTreeMembers);
     const directReferralMembers = await queryDirectReferralMembers(directReferrals, root, tree);
+
+    // Pre-load tree nodes within the visible depth for the preview tree.
+    const previewNodeMap = new Map(placementTreeMembers.map((m) => [m.address.toLowerCase(), m]));
+    await preloadTreeNodes(tree, previewNodeMap, TREE_PRELOAD_DEPTH);
+    state.previewPlacementMembers = [...previewNodeMap.values()];
     state.previewMembers = normalizeSponsorTeamMembers(
       root,
-      mergeTeamMembers(teamMembers, immediateTreeMembers, directReferralMembers)
+      mergeTeamMembers(state.previewPlacementMembers, directReferralMembers)
     );
     render();
   } catch (error) {
