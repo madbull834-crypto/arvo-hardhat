@@ -1426,6 +1426,21 @@ function memberListColumns(options = {}) {
   return options.showClaimable ? [...columns, "Claimable"] : columns;
 }
 
+function simplePage(title, rows, columns, subtitle = "") {
+  return `
+    <section class="data-panel">
+      <h2>${title}</h2>
+      ${subtitle ? `<div class="table-filter-note">${subtitle}</div>` : ""}
+      <div class="table-wrap">
+        <table>
+          <thead><tr>${columns.map((c) => `<th>${c}</th>`).join("")}</tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
 function tablePage(title, rows, columns, options = {}) {
   const selectedLevel = downlineLevelFilter();
   const showAllButton = options.showAllButton !== false;
@@ -1463,86 +1478,147 @@ function tablePage(title, rows, columns, options = {}) {
 }
 
 function directs() {
-  const selectedLevel = downlineLevelFilter();
   const allMembers = teamMembers();
-  const counts = levelCounts(allMembers);
-  if (selectedLevel) {
-    const members = filterByDownlineLevel(allMembers);
-    const rows = memberListRows(members, `No wallets found at member Level ${selectedLevel}`);
-    return tablePage("Direct Team", rows, memberListColumns(), { levelCounts: counts });
-  }
+  const directMembers = allMembers.filter((member) => sameAddress(member.info.referrer, state.account));
+
+  const directAddressSet = new Set([
+    ...state.data.directReferralAddresses.map((a) => a.toLowerCase()),
+    ...directMembers.map((m) => m.address.toLowerCase()),
+  ]);
 
   const events = state.data.registeredEvents.asReferrer;
-  const directMembers = allMembers
-    .filter((member) => sameAddress(member.info.referrer, state.account));
-  const directAddressSet = new Set([
-    ...state.data.directReferralAddresses.map((address) => address.toLowerCase()),
-    ...directMembers.map((member) => member.address.toLowerCase()),
-  ]);
-  const directAddresses = [...directAddressSet];
-  const eventAddresses  = new Set(events.map((event) => String(event.args.user).toLowerCase()));
+  const eventAddresses = new Set(events.map((e) => String(e.args.user).toLowerCase()));
+
   const rowsFromEvents = events.map((event, index) => {
-    const paid = state.data.directEvents.find((direct) => sameAddress(direct.args.from, event.args.user));
-    const member = directMembers.find((item) => sameAddress(item.address, event.args.user));
+    const paid   = state.data.directEvents.find((d) => sameAddress(d.args.from, event.args.user));
+    const member = directMembers.find((m) => sameAddress(m.address, event.args.user));
     return `
-    <tr>
-      <td>${index + 1}</td>
-      <td>${memberIdCell(event.args.user)}</td>
-      <td>${memberAddressCell(event.args.user)}</td>
-      <td>${member ? levelBadge(member.info.currentLevel) : "-"}</td>
-      <td>Block #${event.blockNumber}</td>
-      <td>${paid ? `${formatUsdt(paid.args.amount)} USDT` : "Registered"}</td>
-    </tr>
-  `;
+      <tr>
+        <td>${index + 1}</td>
+        <td>${memberIdCell(event.args.user)}</td>
+        <td>${memberAddressCell(event.args.user)}</td>
+        <td>${member ? levelBadge(member.info.currentLevel) : "-"}</td>
+        <td>${member ? memberPoolBadge(member) : "-"}</td>
+        <td>Block #${event.blockNumber}</td>
+        <td>${paid ? `${formatUsdt(paid.args.amount)} USDT` : "Registered"}</td>
+      </tr>`;
   });
-  const rowsFromStorage = directAddresses
-    .filter((address) => !eventAddresses.has(address))
-    .map((address, index) => {
-      const member = directMembers.find((item) => sameAddress(item.address, address));
+
+  const rowsFromStorage = [...directAddressSet]
+    .filter((addr) => !eventAddresses.has(addr))
+    .map((addr, index) => {
+      const member = directMembers.find((m) => sameAddress(m.address, addr));
       return `
       <tr>
         <td>${rowsFromEvents.length + index + 1}</td>
-        <td>${memberIdCell(address)}</td>
-        <td>${memberAddressCell(address)}</td>
+        <td>${memberIdCell(addr)}</td>
+        <td>${memberAddressCell(addr)}</td>
         <td>${member ? levelBadge(member.info.currentLevel) : "-"}</td>
-        <td>${member ? `Sponsor level ${member.depth}` : "Contract storage"}</td>
-        <td>Referral record</td>
-      </tr>
-    `;
+        <td>${member ? memberPoolBadge(member) : "-"}</td>
+        <td>Contract storage</td>
+        <td>-</td>
+      </tr>`;
     });
-  const directRows = [...rowsFromEvents, ...rowsFromStorage].join("");
-  if (!directRows && allMembers.length) {
-    return tablePage(
-      "Direct Team",
-      memberListRows(allMembers, "No team wallets found"),
-      memberListColumns(),
-      { levelCounts: counts }
-    );
-  }
-  const rows = directRows || `<tr><td colspan="6">No direct referral records found. Contract direct count: ${state.data.user.directCount.toString()}</td></tr>`;
-  return tablePage("Direct Team", rows, ["Sr. No.", "Member ID", "Address", "Level", "Join Block", "Direct Income"], { levelCounts: counts });
+
+  const rows = [...rowsFromEvents, ...rowsFromStorage].join("")
+    || `<tr><td colspan="7">No direct referrals found. On-chain count: ${state.data.user.directCount.toString()}</td></tr>`;
+
+  const total = rowsFromEvents.length + rowsFromStorage.length;
+  return simplePage(
+    "My Direct Referrals",
+    rows,
+    ["Sr. No.", "Member ID", "Address", "Level", "Pool", "Join Block / Source", "Direct Income"],
+    `${total} direct referral${total !== 1 ? "s" : ""}`
+  );
 }
 
 function myTeam() {
-  const selectedLevel = downlineLevelFilter();
   const allMembers = teamMembers();
-  const members = filterByDownlineLevel(allMembers);
-  const counts = levelCounts(allMembers);
-  const rows = memberListRows(members, selectedLevel ? `No team records found at member Level ${selectedLevel}` : "No team records yet");
-  return tablePage("My Team", rows, memberListColumns(), { levelCounts: counts });
+  const rows = memberListRows(allMembers, "No team records yet");
+  return simplePage(
+    "My Downline",
+    rows,
+    memberListColumns(),
+    `${allMembers.length} member${allMembers.length !== 1 ? "s" : ""} in your downline`
+  );
 }
 
 function community() {
   const selectedLevel = downlineLevelFilter();
   const allMembers = teamMembers();
-  const members = filterByDownlineLevel(allMembers);
   const counts = levelCounts(allMembers);
-  const rows = memberListRows(
-    members,
-    selectedLevel ? `No community members found at member Level ${selectedLevel}` : "No community members found under this wallet",
-    { showClaimable: true }
-  );
-  return tablePage("Community Info", rows, memberListColumns({ showClaimable: true }), { levelCounts: counts });
+
+  if (!selectedLevel) {
+    // No level chosen — show level buttons with counts, prompt user to pick one
+    const subCounts = levelSubCounts();
+    const levelButtons = Array.from({ length: MAX_LEVEL }, (_, i) => {
+      const level = i + 1;
+      const memberCount = counts.get(level) || 0;
+      const subCount = subCounts.get(level) || 0;
+      const displayCount = memberCount || subCount;
+      return `<button class="unlocked" data-downline-level="${level}">Level ${level}${displayCount ? ` (${displayCount})` : ""}</button>`;
+    }).join("");
+
+    const totalLoaded = [...counts.values()].reduce((s, c) => s + c, 0);
+
+    return `
+      <section class="data-panel">
+        <h2>Community Info</h2>
+        <div class="table-filter-note">Select a level to view the member list for that level. Total loaded: ${totalLoaded}</div>
+        <div class="pager level-sequence">${levelButtons}</div>
+      </section>
+    `;
+  }
+
+  // Level selected — show address list for that level
+  const members = filterByDownlineLevel(allMembers);
+  const rows = communityLevelRows(members, selectedLevel);
+  const subCounts = levelSubCounts();
+  const levelButtons = Array.from({ length: MAX_LEVEL }, (_, i) => {
+    const level = i + 1;
+    const memberCount = counts.get(level) || 0;
+    const subCount = subCounts.get(level) || 0;
+    const displayCount = memberCount || subCount;
+    const statusClass = level === selectedLevel ? "current" : "unlocked";
+    return `<button class="${statusClass}" data-downline-level="${level}">Level ${level}${displayCount ? ` (${displayCount})` : ""}</button>`;
+  }).join("");
+
+  return `
+    <div class="pager level-sequence">${levelButtons}</div>
+    <section class="data-panel">
+      <h2>Community Info — Level ${selectedLevel}</h2>
+      <div class="table-filter-note">${members.length} member${members.length !== 1 ? "s" : ""} at Level ${selectedLevel}</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Sr. No.</th>
+            <th>Address</th>
+            <th>Sponsor / Upline</th>
+            <th>Directs</th>
+            <th>Pool</th>
+            <th>Claimable USDT</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function communityLevelRows(members, level) {
+  if (!members.length) {
+    return `<tr><td colspan="6">No members at Level ${level}</td></tr>`;
+  }
+  return members.map((member, index) => `
+    <tr>
+      <td>${index + 1}</td>
+      <td>${memberAddressCell(member.address)}</td>
+      <td>${memberIdCell(member.info.referrer)}</td>
+      <td>${member.info.directCount.toString()}</td>
+      <td>${memberPoolBadge(member)}</td>
+      <td>${formatUsdt(member.info.claimableUsdt)} USDT</td>
+    </tr>
+  `).join("");
 }
 
 function tree() {
